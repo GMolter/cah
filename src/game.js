@@ -2,6 +2,7 @@ import { createStore } from "./tiny-store.js";
 
 const ROUND_SECONDS = 60;
 
+/* Demo decks — replace with your packs */
 const sampleBlack = [
   "In the beginning, there was _____.",
   "What did I bring back from Mexico?",
@@ -17,133 +18,112 @@ const sampleWhite = [
   "An awkward silence","Jazz hands","Grandma's laptop","The last slice","Free samples"
 ];
 
-/** helpers */
-const id = () => Math.random().toString(36).slice(2,10);
+/* helpers */
+const id  = () => Math.random().toString(36).slice(2,10);
 const now = () => Date.now();
 
+/* deck lives outside state (no functions in state) */
 function makeDeck(list){
-  const cards = [...list].map((t, i)=>({ id:`c${i}-${id()}`, text:t }));
+  const cards = [...list].map((t,i)=>({ id:`c${i}-${id()}`, text:t }));
   const draw = () => cards.splice(Math.floor(Math.random()*cards.length),1)[0];
-  return { draw, size: ()=> cards.length };
+  const size = () => cards.length;
+  return { draw, size };
 }
 
 export function createGameStore(transport){
+  const deckBlack = makeDeck(sampleBlack);
+  const deckWhite = makeDeck(sampleWhite);
+
   const store = createStore({
     meta:{ room:"", hostId:null, heartbeat:0, seed:Math.random() },
-    players:{},      // id -> {id,name,score,connected,submitted,hand:[cards]}
-    chat:[],         // {id, actorName, text, ts}
-    round:{
-      num:0, judgeId:null, black:null, deadline:0,
-      submissions:[], // {id, by, card, revealed:false}
-      pickedId:null
-    },
-    deck:{ black:makeDeck(sampleBlack), white:makeDeck(sampleWhite) }
+    players:{},
+    chat:[],
+    round:{ num:0, judgeId:null, black:null, deadline:0, submissions:[], pickedId:null }
   });
 
-  // network wrapper
   const net = (type, payload) => transport.send({ type, payload });
 
-  // host election via heartbeat:
   let isHost = false;
   let myId = null;
 
-  /** host loop */
+  /* heartbeat + deadline */
   setInterval(() => {
     const s = store.get();
-    // If I'm host, send heartbeat
     if(isHost){
       store.patch({ meta:{ ...s.meta, heartbeat: now(), hostId: myId }});
       net("heartbeat", { hostId: myId, t: now() });
-    }else{
-      // if heartbeat stale, claim host
-      if(now() - s.meta.heartbeat > 2500){
-        isHost = true;
-        store.patch({ meta:{ ...s.meta, hostId: myId, heartbeat: now() }});
-        startRoundIfNeeded();
-      }
+    }else if(now() - s.meta.heartbeat > 2500){
+      isHost = true;
+      store.patch({ meta:{ ...s.meta, hostId: myId, heartbeat: now() }});
+      startRoundIfNeeded();
     }
-    // handle deadline -> auto-advance
     if(isHost && s.round.deadline && now() > s.round.deadline){
       finalizeRoundAuto();
     }
   }, 800);
 
-  /** actions */
   const actions = {
     ingestNetwork(msg){
       const { type, payload } = msg;
       const s = store.get();
 
-      if(type==="hello"){
-        // Add/refresh player
+      if(type === "hello"){
         const p = payload;
         const existing = s.players[p.id];
         const players = { ...s.players,
           [p.id]: { id:p.id, name:p.name, score: existing?.score || 0, submitted:false, connected:true, hand: existing?.hand || [] }
         };
         store.patch({ players });
-
-        // If host, deal missing hands & send state
         if(isHost){
           ensureHand(p.id, players[p.id]);
           broadcastState();
         }
       }
 
-      if(type==="rename"){
+      if(type === "rename"){
         if(s.players[payload.id]){
           s.players[payload.id].name = payload.name;
           store.patch({ players: { ...s.players }});
         }
       }
 
-      if(type==="heartbeat"){
-        // update known host
+      if(type === "heartbeat"){
         if(!isHost){
           store.patch({ meta:{ ...s.meta, hostId: payload.hostId, heartbeat: payload.t }});
         }
       }
 
-      if(type==="chat"){
+      if(type === "chat"){
         s.chat.push(payload);
         store.patch({ chat: [...s.chat] });
       }
 
-      if(type==="play"){
-        // record submission (host validates)
+      if(type === "play"){
         if(isHost && s.round.judgeId !== payload.by && !s.round.submissions.find(x=>x.by===payload.by)){
           const card = removeCardFromHand(payload.by, payload.cardId);
           if(card){
-            s.round.submissions.push({ id:id(), by:payload.by, card, revealed:false });
+            s.round.submissions.push({ id:id(), by:payload.by, card, revealed:true });
             s.players[payload.by].submitted = true;
             store.patch({ round:{ ...s.round }, players:{ ...s.players }});
             broadcastState();
-            // Auto reveal flip-in for everyone
-            setTimeout(()=> revealAll(), 300);
           }
         }
       }
 
-      if(type==="judge-pick"){
+      if(type === "judge-pick"){
         if(isHost && s.round.judgeId === payload.judgeId){
           pickWinner(payload.submissionId);
         }
       }
 
-      if(type==="state"){
-        // Full sync (non-hosts consume)
-        if(!isHost) {
-          store.replace(payload.state);
-        }
+      if(type === "state"){
+        if(!isHost) store.replace(payload.state);
       }
     },
 
     join(player, forceCreate=false){
       myId = player.id;
-      // initial announce
       net("hello", player);
-
-      // Decide host on first join or forced creation
       const s = store.get();
       if(!s.meta.hostId || forceCreate){
         isHost = true;
@@ -152,28 +132,16 @@ export function createGameStore(transport){
       }
     },
 
-    rename(id, name){
-      net("rename", { id, name });
-    },
-
-    postChat(me, text){
-      const item = { id:id(), actorName: me.name, text, ts: now() };
-      net("chat", item);
-    },
-
-    playCard(playerId, cardId){
-      net("play", { by:playerId, cardId });
-    },
-
-    judgePick(judgeId, submissionId){
-      net("judge-pick", { judgeId, submissionId });
-    }
+    rename(id, name){ net("rename", { id, name }); },
+    postChat(me, text){ net("chat", { id:id(), actorName: me.name, text, ts: now() }); },
+    playCard(playerId, cardId){ net("play", { by:playerId, cardId }); },
+    judgePick(judgeId, submissionId){ net("judge-pick", { judgeId, submissionId }); }
   };
 
-  /** host-only helpers **/
+  /* host helpers */
   function ensureHand(pid, player){
-    while(player.hand.length < 7 && store.get().deck.white.size() > 0){
-      player.hand.push(store.get().deck.white.draw());
+    while(player.hand.length < 7 && deckWhite.size() > 0){
+      player.hand.push(deckWhite.draw());
     }
   }
 
@@ -185,8 +153,7 @@ export function createGameStore(transport){
 
   function removeCardFromHand(pid, cardId){
     const s = store.get();
-    const p = s.players[pid];
-    if(!p) return null;
+    const p = s.players[pid]; if(!p) return null;
     const idx = p.hand.findIndex(c=> c.id===cardId);
     if(idx>=0) return p.hand.splice(idx,1)[0];
     return null;
@@ -194,36 +161,21 @@ export function createGameStore(transport){
 
   function startRoundIfNeeded(){
     const s = store.get();
-    if(s.round.deadline > now()) return; // active
+    if(s.round.deadline > now()) return;
     const judgeId = rotateJudge();
-    const black = s.deck.black.draw();
-    // reset submitted flags
+    const black = deckBlack.draw();
     Object.values(s.players).forEach(p => p.submitted=false);
-
     const deadline = now() + ROUND_SECONDS*1000;
-    store.patch({ round:{
-      num: s.round.num+1, judgeId, black, submissions:[], deadline, pickedId:null
-    }, players:{...s.players}});
+    store.patch({ round:{ num:s.round.num+1, judgeId, black, submissions:[], deadline, pickedId:null }, players:{...s.players}});
     dealAll();
     broadcastState();
   }
 
   function rotateJudge(){
-    const s = store.get();
-    const ids = Object.keys(s.players);
-    if(ids.length===0) return null;
-    // deterministic rotation: sort by id to keep stable order
-    ids.sort();
-    const current = s.round.judgeId ? ids.indexOf(s.round.judgeId) : -1;
-    const next = (current+1) % ids.length;
-    return ids[next];
-  }
-
-  function revealAll(){
-    const s = store.get();
-    s.round.submissions.forEach(x=> x.revealed = true);
-    store.patch({ round:{ ...s.round }});
-    broadcastState();
+    const ids = Object.keys(store.get().players).sort();
+    if(!ids.length) return null;
+    const current = store.get().round.judgeId ? ids.indexOf(store.get().round.judgeId) : -1;
+    return ids[(current+1) % ids.length];
   }
 
   function pickWinner(submissionId){
@@ -235,18 +187,12 @@ export function createGameStore(transport){
     s.round.pickedId = submissionId;
     store.patch({ players:{...s.players}, round:{...s.round}});
     broadcastState();
-    // Short pause then new round
-    setTimeout(()=> {
-      // top-up winner's hand after card spent
-      ensureHand(sub.by, winner);
-      startRoundIfNeeded();
-    }, 2000);
+    setTimeout(()=>{ ensureHand(sub.by, winner); startRoundIfNeeded(); }, 2000);
   }
 
   function finalizeRoundAuto(){
     const s = store.get();
-    // If no pick, randomly pick among submissions
-    if(s.round.submissions.length>0 && !s.round.pickedId){
+    if(s.round.submissions.length && !s.round.pickedId){
       const pick = s.round.submissions[Math.floor(Math.random()*s.round.submissions.length)];
       pickWinner(pick.id);
     }else{
@@ -254,10 +200,7 @@ export function createGameStore(transport){
     }
   }
 
-  function broadcastState(){
-    net("state", { state: store.get() });
-  }
+  function broadcastState(){ net("state", { state: store.get() }); }
 
-  // expose store + actions
   return { get: store.get, subscribe: store.subscribe, actions };
 }
