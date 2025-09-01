@@ -1,18 +1,18 @@
 export class UI{
-  constructor(store, { meId, onPlayCard, onJudgePick, onStartRound, canStartRef }){
+  constructor(store, { meId, onPlayCard, onJudgePick, onStartRound }){
     this.store = store;
     this.meId = meId;
     this.onPlayCard = onPlayCard;
     this.onJudgePick = onJudgePick;
     this.onStartRound = onStartRound;
-    this.canStartRef = canStartRef;
 
     this.$ = (sel)=> document.querySelector(sel);
     this.unsub = store.subscribe( s => this.render(s) );
     this.timerInterval = setInterval(()=> this.renderTimer(this.store.get()), 250);
 
+    // Start button (host only; no longer in topbar, but we leave handler)
     const startBtn = this.$("#start-btn");
-    startBtn.addEventListener("click", ()=> this.onStartRound());
+    if (startBtn) startBtn.addEventListener("click", ()=> this.onStartRound());
 
     this.render(store.get());
   }
@@ -34,8 +34,6 @@ export class UI{
 
   renderBannerAndStart(s){
     const banner = this.$("#banner");
-    const startBtn = this.$("#start-btn");
-
     const playerCount = Object.keys(s.players||{}).length;
     const isHost = s.hostUid && s.hostUid === this.meId;
     const gameStarted = !!s.started;
@@ -44,14 +42,13 @@ export class UI{
     if (!gameStarted && playerCount < 3){
       banner.hidden = false;
       banner.textContent = `Waiting for players — need ${need} more to start (min 3).`;
+    } else if (isHost && !gameStarted){
+      banner.hidden = false;
+      banner.textContent = `Ready to start — click “Start Round” (host only).`;
     } else {
       banner.hidden = true;
       banner.textContent = "";
     }
-
-    startBtn.hidden = !isHost;
-    startBtn.disabled = !(isHost && playerCount >= 3);
-    if (this.canStartRef) this.canStartRef.value = (isHost && playerCount >= 3);
   }
 
   renderPlayers(s){
@@ -152,6 +149,7 @@ export class UI{
       if(canPlay){
         card.addEventListener("click", ()=>{
           card.classList.add("selected");
+          // onPlayCard is provided by app.js
           this.onPlayCard(c.id);
           setTimeout(()=> card.classList.add("disabled"), 50);
         });
