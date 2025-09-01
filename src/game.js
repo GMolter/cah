@@ -1,43 +1,54 @@
-// GAME_BUILD 2025-09-01T06:05Z
-console.log("GAME_BUILD 2025-09-01T06:05Z");
+// GAME_BUILD 2025-09-01T06:15Z
 
-export const ROUND_SECONDS = 60;
-export const id = ()=> Math.random().toString(36).slice(2,10);
+export const ROUND_SECONDS = 50;
 
+export function id(){
+  return Math.random().toString(36).slice(2, 10);
+}
+
+// very small demo decks; replace with your full decks as needed
 const WHITE = [
-  "A funny joke","My collection of rocks","A big explosion","Spaghetti",
-  "A cute puppy","Science","Cheese","Aliens","An oversized lollipop",
-  "A cartoon camel enjoying a popsicle","A very good boy"
-].map((t,i)=>({ id:"w"+i, text:t }));
+  { id:"w1", text:"A surprising burrito." },
+  { id:"w2", text:"Grandma’s Wi-Fi password." },
+  { id:"w3", text:"A suspiciously large balloon." },
+  { id:"w4", text:"A microwave dinner for one." },
+  { id:"w5", text:"That one guy from yoga class." },
+  { id:"w6", text:"A goose with a job." },
+  { id:"w7", text:"Ten thousand bees." },
+  { id:"w8", text:"An awkward fist bump." },
+  { id:"w9", text:"Mild salsa." },
+  { id:"w10", text:"A haunted Roomba." },
+];
 
 const BLACK = [
-  "In the beginning, there was ____.",
-  "What did I bring back from Mexico?",
-  "Why is the floor sticky?"
-].map((t,i)=>({ id:"b"+i, text:t }));
+  { id:"b1", text:"I never leave the house without ____." },
+  { id:"b2", text:"My superpower? Definitely ____." },
+  { id:"b3", text:"Nothing says romance like ____." },
+];
 
-function makeDeck(cards){
-  let bag = cards.slice();
+function makeBag(arr){
+  const pool = arr.slice();
   return {
     draw(){
-      if (!bag.length) return null;
-      const idx = Math.floor(Math.random()*bag.length);
-      return bag.splice(idx,1)[0];
+      if (pool.length === 0) return null;
+      const idx = Math.floor(Math.random()*pool.length);
+      return pool.splice(idx,1)[0];
     }
   };
 }
+
 export function createHostDecks(){
   return {
-    white: makeDeck(WHITE),
-    black: makeDeck(BLACK)
+    white: makeBag(WHITE),
+    black: makeBag(BLACK)
   };
 }
 
-export function computeNextJudgeId(players, prevJudge){
-  const ids = Object.keys(players||{});
-  ids.sort();
-  if (!ids.length) return null;
-  if (!prevJudge) return ids[0];
-  const i = Math.max(0, ids.indexOf(prevJudge));
-  return ids[(i+1) % ids.length];
+export function computeNextJudgeId(playersMap, lastJudgeUid){
+  const ids = Object.keys(playersMap||{}).sort();
+  if (ids.length === 0) return null;
+  if (!lastJudgeUid) return ids[0];
+  const i = ids.indexOf(lastJudgeUid);
+  if (i < 0 || i === ids.length-1) return ids[0];
+  return ids[i+1];
 }
