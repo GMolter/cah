@@ -11,7 +11,6 @@ export class UI{
     this.unsub = store.subscribe( s => this.render(s) );
     this.timerInterval = setInterval(()=> this.renderTimer(this.store.get()), 250);
 
-    // Start button
     const startBtn = this.$("#start-btn");
     startBtn.addEventListener("click", ()=> this.onStartRound());
 
@@ -50,7 +49,6 @@ export class UI{
       banner.textContent = "";
     }
 
-    // Host-only button; disabled until >=3
     startBtn.hidden = !isHost;
     startBtn.disabled = !(isHost && playerCount >= 3);
     if (this.canStartRef) this.canStartRef.value = (isHost && playerCount >= 3);
