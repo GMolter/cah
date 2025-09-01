@@ -3,15 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>IndyMini CAH</title>
-  <link rel="preconnect" href="." />
+  <title>Cards Against (Digital) Humanity</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div id="app">
     <!-- Top Bar -->
     <header class="topbar">
-      <div class="brand">IndyMini · Cards</div>
+      <div class="brand">Cards Against (Digital) Humanity</div>
       <div class="room-controls">
         <input id="room-input" class="input" placeholder="Room code" maxlength="12" />
         <input id="name-input" class="input" placeholder="Your name" maxlength="18" />
@@ -20,7 +19,6 @@
       </div>
     </header>
 
-    <!-- Main Columns -->
     <main class="layout">
       <!-- Chat -->
       <section class="panel chat" id="chat-panel">
@@ -32,7 +30,7 @@
         </div>
       </section>
 
-      <!-- Center Stage -->
+      <!-- Table -->
       <section class="table" id="table">
         <div class="black-card" id="black-card">
           <div class="black-text" id="black-text">Waiting for round…</div>
@@ -45,14 +43,11 @@
           </div>
         </div>
 
-        <!-- Judge stack icon -->
         <div class="judge-stack" id="judge-stack" title="Current judge"></div>
-
-        <!-- Submitted area -->
         <div class="submissions" id="submissions"></div>
       </section>
 
-      <!-- Right rail -->
+      <!-- Players -->
       <aside class="panel players" id="players-panel">
         <div class="panel-title">Players</div>
         <ul id="players-list" class="players-list"></ul>
@@ -61,7 +56,7 @@
       </aside>
     </main>
 
-    <!-- Hand row -->
+    <!-- Hand -->
     <footer class="hand" id="hand"></footer>
   </div>
 
