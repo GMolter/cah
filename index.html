@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IndyMini CAH</title>
+  <link rel="preconnect" href="." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="brand">IndyMini · Cards</div>
+      <div class="room-controls">
+        <input id="room-input" class="input" placeholder="Room code" maxlength="12" />
+        <input id="name-input" class="input" placeholder="Your name" maxlength="18" />
+        <button id="join-btn" class="btn primary">Join</button>
+        <button id="new-btn" class="btn ghost">New Room</button>
+      </div>
+    </header>
+
+    <!-- Main Columns -->
+    <main class="layout">
+      <!-- Chat -->
+      <section class="panel chat" id="chat-panel">
+        <div class="panel-title">Chat</div>
+        <div id="chat-log" class="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" class="input" placeholder="Message..." />
+          <button id="chat-send" class="btn">Send</button>
+        </div>
+      </section>
+
+      <!-- Center Stage -->
+      <section class="table" id="table">
+        <div class="black-card" id="black-card">
+          <div class="black-text" id="black-text">Waiting for round…</div>
+          <div class="timer" id="timer">
+            <svg viewBox="0 0 36 36" class="timer-svg">
+              <path class="bg" d="M18 2 a 16 16 0 0 1 0 32 a 16 16 0 0 1 0 -32"></path>
+              <path class="fg" id="timer-fg" stroke-dasharray="0,100" d="M18 2 a 16 16 0 0 1 0 32 a 16 16 0 0 1 0 -32"></path>
+            </svg>
+            <div class="timer-number" id="timer-number">—</div>
+          </div>
+        </div>
+
+        <!-- Judge stack icon -->
+        <div class="judge-stack" id="judge-stack" title="Current judge"></div>
+
+        <!-- Submitted area -->
+        <div class="submissions" id="submissions"></div>
+      </section>
+
+      <!-- Right rail -->
+      <aside class="panel players" id="players-panel">
+        <div class="panel-title">Players</div>
+        <ul id="players-list" class="players-list"></ul>
+        <div class="panel-title" style="margin-top:1rem;">Scoreboard</div>
+        <ul id="scoreboard" class="players-list"></ul>
+      </aside>
+    </main>
+
+    <!-- Hand row -->
+    <footer class="hand" id="hand"></footer>
+  </div>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
