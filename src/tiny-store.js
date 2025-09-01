@@ -1,4 +1,4 @@
-// NO structuredClone here.
+// Minimal reactive store without structuredClone (functions allowed outside state)
 export function createStore(initial){
   let state = initial;
   const subs = new Set();
