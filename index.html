@@ -10,13 +10,7 @@
   <div id="app">
     <header class="topbar">
       <div class="brand">Cards Against (Digital) Humanity</div>
-      <div class="room-controls">
-        <input id="room-input" class="input" placeholder="Room code" maxlength="12" />
-        <input id="name-input" class="input" placeholder="Your name" maxlength="18" />
-        <button id="join-btn" class="btn primary">Join</button>
-        <button id="new-btn" class="btn ghost">New Room</button>
-        <button id="start-btn" class="btn" title="Host only">Start Round</button>
-      </div>
+      <!-- no create/join controls in the top bar anymore -->
     </header>
 
     <main class="layout">
@@ -56,6 +50,23 @@
     </main>
 
     <footer class="hand" id="hand"></footer>
+  </div>
+
+  <!-- Join modal -->
+  <div id="join-modal" class="modal-backdrop">
+    <div class="modal">
+      <h2>Join a Room</h2>
+      <div class="modal-row">
+        <label for="room-input">Room Code</label>
+        <input id="room-input" class="input" placeholder="e.g. ABC123" maxlength="12" />
+      </div>
+      <div class="modal-row">
+        <label for="name-input">Username</label>
+        <input id="name-input" class="input" placeholder="Your name" maxlength="18" />
+      </div>
+      <button id="join-btn" class="btn primary" style="width:100%">Enter</button>
+      <p class="modal-hint">Ask your host for the 6-letter code.</p>
+    </div>
   </div>
 
   <!-- Firebase SDK boot -->
