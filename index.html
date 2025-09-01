@@ -4,69 +4,79 @@
   <meta charset="utf-8" />
   <title>CA(D)H</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="./styles.css?v=10">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <header>
-    <div class="brand">Cards Against (Digital) Humanity</div>
-    <div class="room-tag" id="room-tag"></div>
+  <header class="topbar">
+    <h1>Cards Against (Digital) Humanity</h1>
   </header>
 
-  <div class="container">
-    <div class="panel cards-area">
-      <div class="row">
-        <div class="title">Round</div>
-        <div class="pill" id="round-pill">Waiting…</div>
-        <div class="pill" id="role-pill">Spectator</div>
-        <div id="host-controls" class="row" style="margin-left:auto;display:none">
-          <button id="start-btn" class="primary">Start round</button>
-        </div>
-      </div>
-
-      <div id="black-slot" class="row"></div>
-
-      <div class="section" id="stage"></div>
-    </div>
-
-    <div class="panel">
-      <div class="row">
-        <div class="title">Players</div>
-        <div class="muted" id="player-count"></div>
-      </div>
-      <div id="players" class="list" style="margin-bottom:12px"></div>
-
-      <div class="section chat">
-        <div id="chat-log" class="chat-log"></div>
-        <div class="row">
-          <input id="chat-input" placeholder="Type a message…" />
-          <button id="chat-send" class="primary">Send</button>
-        </div>
-        <div class="footer-note">Tip: only the host can start rounds; need 3+ players.</div>
-      </div>
+  <!-- Join Modal -->
+  <div id="join-modal" class="modal">
+    <div class="modal-card">
+      <h2>Join a Room</h2>
+      <label>Room code</label>
+      <input id="room-input" maxlength="6" placeholder="ABC123" />
+      <label>Username</label>
+      <input id="name-input" maxlength="22" placeholder="Your name" />
+      <button id="join-btn" class="primary">Join</button>
+      <p class="hint">Tip: you can prefill with <code>?room=AB12</code> in the URL.</p>
     </div>
   </div>
 
-  <!-- JOIN MODAL -->
-  <div id="join-modal">
-    <div class="modal-card fade-in">
-      <h3 style="margin:6px 0 12px">Join a Room</h3>
-      <div class="grid">
-        <div>
-          <label class="muted">Display Name</label>
-          <input id="name-input" placeholder="Your name" />
-        </div>
-        <div>
-          <label class="muted">Room Code</label>
-          <input id="room-input" placeholder="e.g. 4-digit or 6-letter code" />
-        </div>
+  <main class="grid">
+    <!-- Left: Chat -->
+    <section class="panel chat-panel">
+      <header>Chat</header>
+      <div id="chat-list" class="chat-list"></div>
+      <div class="chat-input">
+        <input id="chat-input" placeholder="Type a message…" />
+        <button id="chat-send">Send</button>
       </div>
-      <div class="row" style="margin-top:12px">
-        <button id="join-btn" class="primary">Join</button>
-      </div>
-    </div>
-  </div>
+      <p class="tiny">Tip: only the host can start rounds; need 3+ players.</p>
+    </section>
 
-  <!-- One module only -->
-  <script type="module" src="./src/app.js?v=10"></script>
+    <!-- Center: Board -->
+    <section class="panel board-panel">
+      <div class="round-header">
+        <div class="pills">
+          <span class="pill">Round</span>
+          <span id="round-status" class="pill muted">Waiting…</span>
+          <span id="you-are" class="pill muted">Spectator</span>
+        </div>
+        <div class="host-controls">
+          <button id="start-round" class="primary hidden">Start Round</button>
+        </div>
+      </div>
+
+      <div class="black-card" id="black-card">
+        <div id="black-text" class="black-text">(waiting for host)</div>
+        <div id="timer" class="timer">1:00</div>
+      </div>
+
+      <div id="submissions" class="submissions"></div>
+
+      <h3 class="hand-title">Your Hand</h3>
+      <div id="hand" class="hand"></div>
+    </section>
+
+    <!-- Right: Players -->
+    <section class="panel players-panel">
+      <header>Players</header>
+      <div id="player-list" class="players"></div>
+      <div class="scoreboard">
+        <header>Scoreboard</header>
+        <div id="scoreboard"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Scripts: Exactly one copy each, loaded once -->
+  <script type="module" src="./firebase.js"></script>
+  <script type="module" src="./game.js"></script>
+  <script type="module" src="./tiny-store.js"></script>
+  <script type="module" src="./ui.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
