@@ -1,115 +1,113 @@
-// UI_BUILD 2025-09-01T06:05Z
-console.log("UI_BUILD 2025-09-01T06:05Z");
+// UI_BUILD 2025-09-01T06:15Z
 
 export class UI {
-  constructor(store, actions){
+  constructor(store, handlers){
     this.store = store;
-    this.actions = actions;
-    this.$ = (s)=> document.querySelector(s);
+    this.handlers = handlers;
+    this.$ = s => document.querySelector(s);
 
-    // cache
-    this.el = {
-      modal: this.$("#join-modal"),
-      start: this.$("#start-round"),
-      roundStatus: this.$("#round-status"),
-      youAre: this.$("#you-are"),
-      blackText: this.$("#black-text"),
-      timer: this.$("#timer"),
-      hand: this.$("#hand"),
-      subs: this.$("#submissions"),
-      players: this.$("#player-list"),
-      scores: this.$("#scoreboard"),
-      chatList: this.$("#chat-list"),
-    };
+    this.$roundBlack = this.$("#round-black");
+    this.$roundMeta  = this.$("#round-meta");
+    this.$startWrap  = this.$("#start-controls");
+    this.$startBtn   = this.$("#start-round");
 
-    // start button
-    if (this.el.start){
-      this.el.start.addEventListener("click", ()=> actions.onStartRound && actions.onStartRound());
-    }
+    this.$players    = this.$("#players");
+    this.$hand       = this.$("#hand");
+    this.$subs       = this.$("#submissions");
+    this.$chatLog    = this.$("#chat-log");
+    this.$roomCode   = this.$("#room-code");
 
-    // react to state
-    store.subscribe((s)=> this.render(s));
-  }
+    this.$startBtn.addEventListener("click", ()=> this.handlers.onStartRound?.());
 
-  showStartIfHost(s){
-    if (!this.el.start) return;
-    const isHost = s.hostUid && s.hostUid === this.actions.meId;
-    const canStart = isHost && Object.keys(s.players||{}).length >= 3;
-    this.el.start.classList.toggle("hidden", !canStart);
+    this.unsub = store.subscribe((s)=> this.render(s));
   }
 
   render(s){
-    // banner pills
-    if (this.el.roundStatus) this.el.roundStatus.textContent = s.started ? "Live" : "Waiting…";
-    if (this.el.youAre) {
-      const judge = s.round?.judgeUid;
-      this.el.youAre.textContent = (judge === this.actions.meId) ? "Judge" : "Player";
-    }
+    // header / room code
+    const code = localStorage.getItem("cadh-room") || "—";
+    if (this.$roomCode) this.$roomCode.textContent = code;
 
-    // black card
-    if (s.round?.black) this.el.blackText.textContent = s.round.black.text;
-    else this.el.blackText.textContent = "(waiting for host)";
-    if (s.round?.deadline){
-      const left = Math.max(0, Math.floor((s.round.deadline - Date.now())/1000));
-      const mm = Math.floor(left/60).toString().padStart(1,"0");
-      const ss = (left%60).toString().padStart(2,"0");
-      this.el.timer.textContent = `${mm}:${ss}`;
-    } else {
-      this.el.timer.textContent = "1:00";
-    }
+    // players
+    this.$players.innerHTML = "";
+    const ids = Object.keys(s.players||{});
+    ids.sort();
+    ids.forEach(uid=>{
+      const p = s.players[uid];
+      const el = document.createElement("div");
+      el.className = "player" + (uid===this.handlers.meId ? " me":"");
+      el.innerHTML = `
+        <div><strong>${escapeHtml(p.name||"Player")}</strong></div>
+        <div class="muted small">Score: ${p.score||0}${p.submitted ? " • submitted": ""}</div>
+      `;
+      this.$players.appendChild(el);
+    });
 
     // hand
-    if (this.el.hand){
-      const myHand = (s.hands||{})[this.actions.meId] || {};
-      const cards = Object.values(myHand);
-      this.el.hand.innerHTML = cards.map(c=>`
-        <div class="white-card" data-card="${c.id}">
-          <div class="text">${c.text}</div>
-        </div>
-      `).join("");
-      // click to play
-      this.el.hand.querySelectorAll(".white-card").forEach(div=>{
-        div.onclick = ()=>{
-          const cid = div.getAttribute("data-card");
-          this.actions.onPlayCard && this.actions.onPlayCard(cid);
-        };
+    this.$hand.innerHTML = "";
+    const myHand = (s.hands||{})[this.handlers.meId] || {};
+    Object.values(myHand).forEach(card=>{
+      const el = document.createElement("div");
+      el.className = "card";
+      el.textContent = card.text;
+      el.addEventListener("click", ()=>{
+        if (s.round?.judgeUid === this.handlers.meId) return; // judge cannot play
+        this.handlers.onPlayCard?.(card.id);
       });
-    }
+      this.$hand.appendChild(el);
+    });
 
-    // submissions (judge view)
-    if (this.el.subs){
-      const mineIsJudge = s.round?.judgeUid === this.actions.meId;
-      const picked = s.round?.pickedSubmissionId || null;
-      this.el.subs.innerHTML = (s.submissions||[]).map(sub=>{
-        const cls = ["white-card"];
-        if (mineIsJudge) cls.push("pickable");
-        if (picked === sub.id) cls.push("winner");
-        return `<div class="${cls.join(" ")}" data-sub="${sub.id}">
-            <div class="text">${sub.card.text}</div>
-          </div>`;
-      }).join("");
-      if (mineIsJudge){
-        this.el.subs.querySelectorAll(".white-card.pickable").forEach(div=>{
-          div.onclick = ()=> this.actions.onJudgePick && this.actions.onJudgePick(div.getAttribute("data-sub"));
-        });
-      }
+    // round
+    if (s.round?.black?.text) {
+      this.$roundBlack.textContent = s.round.black.text;
+    } else {
+      this.$roundBlack.textContent = s.hostUid ? "Waiting for round…" : "Waiting for host…";
     }
+    const judgeName = s.round?.judgeUid && s.players[s.round.judgeUid]?.name;
+    const deadline  = s.round?.deadline ? new Date(s.round.deadline).toLocaleTimeString() : "—";
+    this.$roundMeta.innerHTML = `
+      <span class="muted">Judge:</span> ${escapeHtml(judgeName || "—")}
+      &nbsp;&nbsp; <span class="muted">Ends:</span> ${deadline}
+    `;
 
-    // players + scores
-    if (this.el.players){
-      const entries = Object.entries(s.players||{});
-      entries.sort((a,b)=> (b[1].score||0)-(a[1].score||0));
-      this.el.players.innerHTML = entries.map(([id,p])=>`
-        <div class="player">
-          <span class="name">${p.name}${(s.round?.judgeUid===id)?" — 👑":""}</span>
-          <span class="score">${p.score||0}</span>
-        </div>
-      `).join("");
-      this.el.scores.innerHTML = entries.map(([_,p])=>`
-        <div class="row"><span>${p.name}</span><b>${p.score||0}</b></div>
-      `).join("");
-    }
+    // start button (host only, ≥3 players, not started or ready for next)
+    const amHost = !!(s.hostUid && s.hostUid === this.handlers.meId);
+    const playerCount = Object.keys(s.players||{}).length;
+    const canSeeStart = amHost && playerCount >= 3;
+    this.$startWrap.classList.toggle("hidden", !canSeeStart);
 
-    this.showStartIfHost(s);
+    // submissions (only visible to host for picking)
+    this.$subs.innerHTML = "";
+    const subs = s.submissions || [];
+    subs.forEach(sub=>{
+      const el = document.createElement("div");
+      el.className = "submission";
+      el.innerHTML = `
+        <div>${escapeHtml(sub.card?.text || "")}</div>
+        <div class="by">by ${escapeHtml(s.players[sub.by]?.name || "Player")}</div>
+      `;
+      el.addEventListener("click", ()=>{
+        if (amHost && s.round?.judgeUid === this.handlers.meId) {
+          this.handlers.onJudgePick?.(sub.id);
+        }
+      });
+      this.$subs.appendChild(el);
+    });
+
+    // chat
+    this.$chatLog.innerHTML = "";
+    const chat = s.chat || [];
+    chat.forEach(msg=>{
+      const row = document.createElement("div");
+      row.className = "chat-row";
+      row.innerHTML = `<span class="chat-name">${escapeHtml(msg.name||"")}</span>${escapeHtml(msg.text||"")}`;
+      this.$chatLog.appendChild(row);
+    });
+    this.$chatLog.scrollTop = this.$chatLog.scrollHeight;
   }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
 }
