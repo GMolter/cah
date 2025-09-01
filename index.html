@@ -4,76 +4,69 @@
   <meta charset="utf-8" />
   <title>CA(D)H</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="./styles.css" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
+  <link rel="stylesheet" href="./styles.css?v=9">
 </head>
 <body>
-  <header class="topbar">
-    <h1>Cards Against (Digital) Humanity</h1>
-    <div id="room-pill" class="pill" title="Room Code"></div>
+  <header>
+    <div class="brand">Cards Against (Digital) Humanity</div>
+    <div class="room-tag" id="room-tag"></div>
   </header>
 
-  <!-- Join Modal -->
-  <div id="join-modal" class="modal">
-    <div class="modal-card">
-      <h2>Join a Room</h2>
-      <label>
-        Display Name
-        <input id="name-input" type="text" maxlength="24" placeholder="Your name" />
-      </label>
-      <label class="room-row">
-        Room Code
-        <div class="room-row-inner">
-          <input id="room-input" type="text" placeholder="1234 or ABC123" />
-          <button id="gen-btn" class="secondary" title="Generate 4-digit code (host)">Generate Code</button>
+  <div class="container">
+    <div class="panel cards-area">
+      <div class="row">
+        <div class="title">Round</div>
+        <div class="pill" id="round-pill">Waiting…</div>
+        <div class="pill" id="role-pill">Spectator</div>
+        <div id="host-controls" class="row" style="margin-left:auto;display:none">
+          <button id="start-btn" class="primary">Start round</button>
         </div>
-      </label>
-      <div class="actions">
-        <button id="join-btn" class="primary">Join</button>
       </div>
-      <p class="hint">Tip: Host generates a 4-digit code, others enter it to join.</p>
+
+      <div id="black-slot" class="row"></div>
+
+      <div class="section" id="stage"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <div class="title">Players</div>
+        <div class="muted" id="player-count"></div>
+      </div>
+      <div id="players" class="list" style="margin-bottom:12px"></div>
+
+      <div class="section chat">
+        <div id="chat-log" class="chat-log"></div>
+        <div class="row">
+          <input id="chat-input" placeholder="Type a message…" />
+          <button id="chat-send" class="primary">Send</button>
+        </div>
+        <div class="footer-note">Tip: only the host can start rounds; need 3+ players.</div>
+      </div>
     </div>
   </div>
 
-  <main class="layout">
-    <!-- Left: Black card & controls -->
-    <section class="board">
-      <div id="black-card" class="card black">
-        <div class="card-text">Waiting to start…</div>
-        <div class="timer" id="round-timer"></div>
-      </div>
-
-      <div class="controls">
-        <button id="start-btn" class="primary" style="display:none;">Start Round</button>
-        <div id="status" class="status"></div>
-      </div>
-
-      <div id="submissions" class="submissions"></div>
-    </section>
-
-    <!-- Right: Hand & Chat -->
-    <aside class="sidebar">
-      <div class="hand">
-        <h3>Your Hand</h3>
-        <div id="hand-cards" class="hand-cards"></div>
-      </div>
-
-      <div class="chat">
-        <h3>Table Chat</h3>
-        <div id="chat-log" class="chat-log"></div>
-        <div class="chat-input">
-          <input id="chat-input" type="text" placeholder="Type message…" />
-          <button id="chat-send">Send</button>
+  <!-- JOIN MODAL -->
+  <div id="join-modal">
+    <div class="modal-card fade-in">
+      <h3 style="margin:6px 0 12px">Join a Room</h3>
+      <div class="grid">
+        <div>
+          <label class="muted">Display Name</label>
+          <input id="name-input" placeholder="Your name" />
+        </div>
+        <div>
+          <label class="muted">Room Code</label>
+          <input id="room-input" placeholder="e.g. 4-digit or 6-letter code" />
         </div>
       </div>
-    </aside>
-  </main>
+      <div class="row" style="margin-top:12px">
+        <button id="join-btn" class="primary">Join</button>
+      </div>
+    </div>
+  </div>
 
-  <!-- Firebase + App -->
-  <script type="module" src="./firebase.js"></script>
-  <script type="module" src="./game.js"></script>
-  <script type="module" src="./tiny-store.js"></script>
-  <script type="module" src="./ui.js"></script>
-  <script type="module" src="./app.js"></script>
+  <!-- Load exactly ONE module; it imports the rest -->
+  <script type="module" src="./src/app.js?v=9"></script>
 </body>
 </html>
