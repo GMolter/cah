@@ -26,37 +26,25 @@ body{
   position:sticky; top:0; z-index:50; box-shadow:var(--shadow);
 }
 .brand{font-weight:800; letter-spacing:.3px}
-.room-controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
-.input{
-  background:#111216;border:1px solid #2a2b33;color:var(--text);
-  padding:10px 12px;border-radius:12px; outline:none; min-width:150px;
-  transition:border .2s, transform .15s ease;
-}
-.input:focus{border-color:#3b3d46; transform:translateY(-1px)}
-.btn{
-  background:#1a1b20; color:var(--text); border:1px solid #2a2b33; padding:10px 14px; border-radius:12px;
-  cursor:pointer; transition:transform .15s ease, background .2s, border .2s; box-shadow:var(--shadow);
-}
-.btn:hover{transform:translateY(-1px)}
-.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2)); border:0}
-.btn.ghost{background:transparent}
 
+/* layout panels */
 .layout{
   display:grid; gap:16px; padding:16px; grid-template-columns: 320px 1fr 260px; align-items:stretch;
 }
-
 .panel{
   background:var(--panel); border:1px solid #24242a; border-radius:var(--radius); padding:12px;
   box-shadow:var(--shadow); min-height:200px;
 }
 .panel-title{font-weight:700; margin:6px 6px 10px; color:#d3d5db}
 
+/* chat */
 .chat{display:flex; flex-direction:column}
 .chat-log{flex:1; overflow:auto; padding:8px; border-radius:10px; background:#0f0f13; border:1px solid #24242a}
 .chat-msg{margin:6px 0; opacity:.95}
 .chat-actor{font-weight:700}
 .chat-input-row{display:flex; gap:8px; margin-top:8px}
 
+/* players */
 .players-list{list-style:none; margin:0; padding:0}
 .players-list li{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
@@ -68,16 +56,17 @@ body{
 .badge.wait{color:#fcd34d}
 .badge.judge{color:#a78bfa}
 
+/* table */
 .table{
   position:relative; display:grid; grid-template-rows:auto 1fr; gap:14px;
   align-items:start; justify-items:center; padding:8px;
 }
-
 .banner{
   background:#1f2937; border:1px solid #374151; color:#e5e7eb;
   border-radius:12px; padding:10px 12px; margin-bottom:8px; width:100%; text-align:center;
 }
 
+/* black card */
 .black-card{
   width:min(560px, 92%); min-height:220px; border-radius:18px;
   background:linear-gradient(165deg,#070707,#0e0e10); border:1px solid #1f1f24;
@@ -91,6 +80,7 @@ body{
 }
 .judge-stack::before{content:"🃏"; display:grid; place-items:center; font-size:28px; width:100%; height:100%}
 
+/* timer */
 .timer{
   position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
   display:grid; place-items:center; width:76px; height:76px;
@@ -100,11 +90,11 @@ body{
 .timer-svg .fg{fill:none; stroke:#8b5cf6; stroke-linecap:round; stroke-width:3; transition:stroke-dasharray .2s ease}
 .timer-number{position:absolute; font-weight:800; text-shadow:0 1px 0 #0006}
 
+/* submissions & hand */
 .submissions{
   display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px;
   width:100%;
 }
-
 .card{
   height:150px; padding:14px; border-radius:16px; border:1px solid #e5e7eb; background:var(--card-white);
   color:#0b0c0f; font-weight:800; font-size:1.2rem; display:flex; align-items:center; justify-content:center; text-align:center;
@@ -114,7 +104,6 @@ body{
 .card:hover{transform:translateY(-4px) rotate(-.2deg) scale(1.02)}
 .card.selected{outline:3px solid var(--accent); outline-offset:3px}
 .card.disabled{pointer-events:none; filter:grayscale(.35); opacity:.7}
-
 .hand{
   position:sticky; bottom:0; background:linear-gradient(180deg,transparent,#0c0c0f 30%);
   padding:14px 16px 20px;
@@ -122,11 +111,11 @@ body{
   border-top:1px solid #24242a;
 }
 
+/* animations */
 .fade-in{animation:fadeIn .35s ease both}
 .slide-up{animation:slideUp .35s ease both}
 .flip-in{animation:flipIn .5s cubic-bezier(.2,.8,.2,1) both}
 .pulse{animation:pulse 1.5s ease-in-out infinite}
-
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0; transform:translateY(12px)}to{opacity:1; transform:none}}
 @keyframes flipIn{from{opacity:0; transform:rotateX(-70deg) scale(.96)}to{opacity:1; transform:rotateX(0) scale(1)}}
@@ -135,12 +124,24 @@ body{
   50%{box-shadow:0 0 0 10px rgba(139,92,246,.07)}
 }
 
+/* join modal */
+.modal-backdrop{
+  position:fixed; inset:0; background:rgba(0,0,0,.6);
+  display:flex; align-items:center; justify-content:center;
+  z-index:1000;
+}
+.modal{
+  width:min(420px, 92%); background:#121217; color:#e5e7eb; border:1px solid #272731;
+  border-radius:16px; padding:18px; box-shadow:var(--shadow);
+}
+.modal h2{margin:0 0 12px 0}
+.modal-row{display:flex; flex-direction:column; gap:6px; margin:8px 0}
+.modal-hint{opacity:.7; font-size:.9rem; text-align:center; margin:8px 0 0}
+
+/* responsive */
 @media (max-width:1000px){
   .layout{grid-template-columns:1fr}
   .panel.players{order:3}
   .table{order:2}
   .panel.chat{order:1}
-  .topbar{flex-direction:column; gap:10px; align-items:flex-start}
-  .room-controls{width:100%}
-  .input{flex:1}
 }
