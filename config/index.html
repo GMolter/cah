@@ -7,44 +7,50 @@
   <style>
     :root{ --bg:#0e0e10; --panel:#17171b; --text:#f5f6f8; --accent:#8b5cf6; --accent2:#22d3ee; --shadow:0 10px 30px rgba(0,0,0,.35) }
     html,body{height:100%}
-    body{margin:0; background:#0e0e10; color:var(--text); font:500 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      display:grid; place-items:center}
-    .card{width:min(560px,92%); background:linear-gradient(165deg,#121217,#0c0c10);
+    body{margin:0; background:var(--bg); color:var(--text); font:500 16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Inter,sans-serif; display:grid; place-items:center}
+    .card{width:min(620px,92%); background:linear-gradient(165deg,#121217,#0c0c10);
       border:1px solid #272733; border-radius:16px; padding:18px; box-shadow:var(--shadow)}
-    h1{margin:0 0 8px 0; font-size:1.4rem}
-    .muted{opacity:.75; margin-top:4px}
-    .row{display:flex; gap:8px; align-items:center; margin:10px 0}
-    .code{font-weight:800; font-size:1.6rem; letter-spacing:.2rem; background:#0e0e14; border:1px solid #2a2a36;
-      padding:10px 14px; border-radius:12px}
-    .btn{cursor:pointer; border:0; border-radius:12px; padding:10px 14px; color:white;
-      background:linear-gradient(135deg,var(--accent),var(--accent2)); box-shadow:var(--shadow)}
+    h1{margin:0 0 6px 0; font-size:1.35rem}
+    .muted{opacity:.78; margin:2px 0 12px}
+    .row{display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap}
+    .code{font-weight:800; font-size:1.6rem; letter-spacing:.18rem; background:#0e0e14; border:1px solid #2a2a36; padding:10px 14px; border-radius:12px}
+    .btn{cursor:pointer; border:0; border-radius:12px; padding:10px 14px; color:white; background:linear-gradient(135deg,var(--accent),var(--accent2)); box-shadow:var(--shadow)}
     .btn.ghost{background:#1a1b22; border:1px solid #2b2c37}
     .link{display:inline-block; margin-top:10px; text-decoration:none; color:white; font-weight:700}
-    .small{font-size:.9rem}
-    .status{margin-top:10px; opacity:.9}
+    .small{font-size:.92rem}
+    .status{margin-top:12px; opacity:.92; white-space:pre-wrap}
+    .grid{display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center}
+    @media (max-width:520px){ .grid{grid-template-columns:1fr 1fr} .hide-sm{display:none} }
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   </style>
 </head>
 <body>
   <div class="card">
     <h1>Create a Room Code</h1>
-    <div class="muted small">This page generates a new room in Firebase and gives you a link to share.</div>
+    <div class="muted small">This page signs in anonymously, creates a room in Firebase (<span class="mono">/rooms/{CODE}</span>), and gives you a link to share.</div>
 
-    <div class="row">
+    <div class="grid">
       <div id="room-code" class="code">••••••</div>
-      <button id="copy-btn" class="btn">Copy</button>
-      <button id="regen-btn" class="btn ghost" title="Try a different code">Regenerate</button>
+      <button id="copy-code" class="btn">Copy code</button>
+      <button id="regen" class="btn ghost hide-sm" title="Try a different code">Regenerate</button>
     </div>
 
-    <a id="join-link" class="link" href="#">Open room in game →</a>
-    <div id="status" class="status">Signing in…</div>
+    <div class="row">
+      <a id="open-link" class="link" href="#">Open room in game →</a>
+      <button id="copy-link" class="btn ghost">Copy link</button>
+    </div>
+
+    <div id="status" class="status small">Booting…</div>
   </div>
 
   <script type="module">
+    console.log("CONFIG_BUILD","2025-09-01T05:40Z");
+
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import { getDatabase, ref, set, runTransaction, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
-    // --- Use the same config you already use in your app ---
+    // ==== Firebase config (same project) ====
     const firebaseConfig = {
       apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
       authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
@@ -55,91 +61,146 @@
       databaseURL: "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com"
     };
 
+    // ==== UI helpers ====
+    const $ = (s)=> document.querySelector(s);
+    const codeEl = $("#room-code");
+    const statusEl = $("#status");
+    const openLink = $("#open-link");
+    const copyCodeBtn = $("#copy-code");
+    const copyLinkBtn = $("#copy-link");
+    const regenBtn = $("#regen");
+
+    const v = "6"; // cache-bust version for index.html
+    const genCode = () => Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
+
+    function setStatus(msg){
+      console.log("[status]", msg);
+      statusEl.textContent = msg;
+    }
+    function applyUI(code){
+      codeEl.textContent = code;
+      const url = `index.html?room=${encodeURIComponent(code)}&v=${v}`;
+      openLink.href = url;
+      openLink.textContent = `Open room ${code} in game →`;
+    }
+    async function copyText(text){
+      try{ await navigator.clipboard.writeText(text); setStatus(`Copied: ${text}`); }
+      catch{ setStatus("Copy failed. Select & copy manually."); }
+    }
+
+    // ==== Firebase boot ====
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db   = getDatabase(app);
 
-    const $ = (s)=> document.querySelector(s);
-    const codeEl = $("#room-code");
-    const statusEl = $("#status");
-    const linkEl = $("#join-link");
-    const copyBtn = $("#copy-btn");
-    const regenBtn = $("#regen-btn");
-
-    const genCode = () => Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
-
-    async function createRoomOnce(uid, code){
-      // Rules allow first writer to set hostUid; if collision (already taken by other uid), set() will fail.
-      await set(ref(db, `rooms/${code}/hostUid`), uid);
-      await set(ref(db, `rooms/${code}/createdAt`), Date.now()).catch(()=>{});
-      return code;
+    async function waitForAuth(){
+      setStatus("Signing in anonymously…");
+      await signInAnonymously(auth).catch(err=>{
+        console.error("[auth] signInAnonymously error", err);
+        setStatus("Auth failed: " + (err?.message || err));
+        throw err;
+      });
+      const user = await new Promise((resolve,reject)=>{
+        const off = onAuthStateChanged(auth, u=>{
+          if(u){ console.log("[auth] uid", u.uid); off(); resolve(u); }
+        }, err=>{ console.error("[auth] onAuthStateChanged error", err); reject(err); });
+      });
+      return user;
     }
 
-    async function createRoomWithRetry(uid, maxTries = 6){
-      statusEl.textContent = "Creating room…";
+    // === Create a room safely with your rules ===
+    // Strategy:
+    // 1) Try to claim /rooms/{code}/hostUid via a transaction that only writes if empty.
+    // 2) If claim succeeds, set createdAt once (ignore error if some race wrote it first).
+    // No reads before writes (compatible with your rules).
+    async function createRoomCode(uid, maxTries=8){
+      setStatus("Creating room…");
       for (let i=0;i<maxTries;i++){
         const code = genCode();
+        const hostRef = ref(db, `rooms/${code}/hostUid`);
         try{
-          await createRoomOnce(uid, code);
-          return code;
+          // Transaction ensures we only write if hostUid is empty
+          const res = await runTransaction(hostRef, current => {
+            if (current === null) return uid; // claim
+            return; // abort
+          }, {applyLocally:false});
+          if (res.committed && res.snapshot.val() === uid){
+            console.log("[create] claimed hostUid for", code);
+            // set createdAt if not set; rule allows only if doesn't exist
+            try{
+              await set(ref(db, `rooms/${code}/createdAt`), Date.now());
+              console.log("[create] createdAt set");
+            }catch(err){
+              console.warn("[create] createdAt set denied (likely exists or race). OK.", err?.message || err);
+            }
+            return code;
+          }else{
+            console.log("[create] collision on", code, "retrying…");
+          }
         }catch(err){
-          // Likely permission_denied due to existing hostUid set by someone else; try again
-          if(i === maxTries-1) throw err;
+          console.warn("[create] transaction failed (maybe rules or race). Retrying…", err?.message || err);
         }
       }
-      throw new Error("Could not allocate a room code");
-    }
-
-    function applyUI(code){
-      codeEl.textContent = code;
-      linkEl.href = `index.html?room=${encodeURIComponent(code)}`;
-      linkEl.textContent = `Open room ${code} in game →`;
-      statusEl.textContent = "Room ready. Share the code or the link.";
-      // optionally, put code in clipboard automatically on creation
+      throw new Error("Could not allocate a room code after several tries.");
     }
 
     async function boot(){
-      statusEl.textContent = "Signing in…";
-      await signInAnonymously(auth).catch(err=>{
-        statusEl.textContent = "Auth failed: " + (err?.message || err);
-        throw err;
-      });
-
-      const user = await new Promise(resolve=>{
-        onAuthStateChanged(auth, u=> u && resolve(u));
-      });
-
-      // Try to reuse ?room= param to re-point to an existing code, otherwise create
-      const params = new URLSearchParams(location.search);
-      const preset = (params.get("room") || "").toUpperCase();
       try{
-        const code = preset || await createRoomWithRetry(user.uid);
+        const user = await waitForAuth();
+
+        // Optional: allow ?room=PRESET to re-use a code (will still try to claim hostUid)
+        const params = new URLSearchParams(location.search);
+        const preset = (params.get("room") || "").toUpperCase();
+
+        let code = preset;
+        if (!code){
+          code = await createRoomCode(user.uid);
+        }else{
+          // Try to claim preset; if taken, we just link to it (host will be whoever owns it)
+          setStatus(`Trying to claim preset room ${code}…`);
+          try{
+            const res = await runTransaction(ref(db, `rooms/${code}/hostUid`), current => {
+              if (current === null) return user.uid;
+              return; // abort if someone already set it
+            }, {applyLocally:false});
+            if (res.committed){
+              console.log("[preset] claimed host for preset", code);
+              try{ await set(ref(db, `rooms/${code}/createdAt`), Date.now()); }catch{}
+            }else{
+              console.log("[preset] preset already owned; continuing without claim");
+            }
+          }catch(err){
+            console.warn("[preset] claim failed:", err?.message || err);
+          }
+        }
+
         applyUI(code);
+        setStatus(`Room ready: ${code}\nShare the code or the link below.`);
       }catch(err){
-        statusEl.textContent = "Failed to create room: " + (err?.message || err);
+        setStatus("Fatal error: " + (err?.message || err));
       }
-
-      copyBtn.addEventListener("click", async ()=>{
-        const code = codeEl.textContent.trim();
-        try{
-          await navigator.clipboard.writeText(code);
-          statusEl.textContent = `Copied ${code} to clipboard.`;
-        }catch{
-          statusEl.textContent = "Copy failed. Select and copy manually.";
-        }
-      });
-
-      regenBtn.addEventListener("click", async ()=>{
-        statusEl.textContent = "Generating a new room…";
-        try{
-          const code = await createRoomWithRetry(user.uid);
-          applyUI(code);
-        }catch(err){
-          statusEl.textContent = "Failed to create room: " + (err?.message || err);
-        }
-      });
     }
 
+    // ==== UI events ====
+    copyCodeBtn.addEventListener("click", ()=>{
+      copyText(codeEl.textContent.trim());
+    });
+    copyLinkBtn.addEventListener("click", ()=>{
+      copyText(openLink.href);
+    });
+    regenBtn.addEventListener("click", async ()=>{
+      setStatus("Regenerating room…");
+      try{
+        const user = auth.currentUser || await waitForAuth();
+        const code = await createRoomCode(user.uid);
+        applyUI(code);
+        setStatus(`Room ready: ${code}`);
+      }catch(err){
+        setStatus("Failed to create room: " + (err?.message || err));
+      }
+    });
+
+    // Start
     boot();
   </script>
 </body>
