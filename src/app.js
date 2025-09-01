@@ -1,14 +1,13 @@
-console.log("APP_JS_BUILD","2025-09-01T05:35Z");
-
-// /src/app.js  — fixed join flow (no pre-read), verbose debug logging
+// /src/app.js  — robust join flow + presence watcher with grace
 import { app, auth, db, authReady } from "./firebase.js";
 import { createHostDecks, computeNextJudgeId, ROUND_SECONDS, id } from "./game.js";
 import { createStore } from "./tiny-store.js";
 import { UI } from "./ui.js";
-
 import {
   ref, get, set, update, onValue, onDisconnect, remove
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+console.log("APP_JS_BUILD","2025-09-01T06:05Z");
 
 /* ---------- DOM ---------- */
 const $ = (s)=> document.querySelector(s);
@@ -79,7 +78,7 @@ async function joinRoom(code, desiredName){
   localStorage.setItem("cadh-room", code);
   currentRoom = code;
 
-  // 1) Create/overwrite my player node WITHOUT reading first (membership gate would block reads).
+  // 1) Create/overwrite my player node (no reads)
   const playerRef = ref(db, `rooms/${code}/players/${my.uid}`);
   try {
     console.log("[joinRoom] Creating my player via set()", playerRef.toString());
@@ -92,12 +91,12 @@ async function joinRoom(code, desiredName){
     });
     console.log("[joinRoom] Player set OK");
   } catch (err) {
-    console.error("[joinRoom] ERROR setting players node (this must succeed to gain membership):", err);
+    console.error("[joinRoom] ERROR setting players node:", err);
     alert("Could not join: " + (err?.message || err));
-    return; // cannot proceed without membership
+    return;
   }
 
-  // 2) Presence (self-managed). No read required, so fine either way.
+  // 2) Presence
   const presenceRef = ref(db, `rooms/${code}/presence/${my.uid}`);
   try {
     console.log("[joinRoom] Setting presence true", presenceRef.toString());
@@ -109,7 +108,7 @@ async function joinRoom(code, desiredName){
     console.error("[joinRoom] ERROR writing presence:", err);
   }
 
-  // 3) Try to become host (first writer wins; expected to fail if someone else already host).
+  // 3) Try to become host (first writer wins)
   const hostUidRef = ref(db, `rooms/${code}/hostUid`);
   try {
     console.log("[joinRoom] Attempting to set hostUid:", hostUidRef.toString(), "->", my.uid);
@@ -119,7 +118,7 @@ async function joinRoom(code, desiredName){
     console.warn("[joinRoom] Could not set hostUid (likely taken):", err);
   }
 
-  // 4) createdAt set-once
+  // 4) createdAt set-once (config page may have set this already)
   const createdAtRef = ref(db, `rooms/${code}/createdAt`);
   try {
     console.log("[joinRoom] Attempting to set createdAt:", createdAtRef.toString());
@@ -129,7 +128,7 @@ async function joinRoom(code, desiredName){
     console.warn("[joinRoom] createdAt already exists / write blocked:", err);
   }
 
-  // 5) Subscribe to room data (now that we’re a member, reads should be allowed)
+  // 5) Subscribe to room data
   console.log("[joinRoom] Binding subscriptions for room", code);
   bindRoomSubscriptions(code);
 
@@ -209,9 +208,14 @@ function bindRoomSubscriptions(code){
   });
 }
 
+let hostGraceTimer = null;
 function attachHostPresenceWatcher(code, hostUid){
   if (!hostUid) {
     console.log("[attachHostPresenceWatcher] no hostUid yet");
+    return;
+  }
+  if (hostUid === my.uid) {
+    console.log("[attachHostPresenceWatcher] I am host; no need to watch my own presence");
     return;
   }
   console.log("[attachHostPresenceWatcher] hostUid =", hostUid);
@@ -219,15 +223,39 @@ function attachHostPresenceWatcher(code, hostUid){
   const hostPresenceRef = ref(db, `rooms/${code}/presence/${hostUid}`);
   const hostPlayerRef   = ref(db, `rooms/${code}/players/${hostUid}`);
 
+  const clearGrace = ()=> { if (hostGraceTimer){ clearTimeout(hostGraceTimer); hostGraceTimer = null; } };
+
+  const maybeEnd = (reason) => {
+    const started = store.get().started;
+    if (!started) {
+      console.log("[hostPresence] host absent but game not started; waiting.");
+      return;
+    }
+    console.warn("[hostPresence] ending game:", reason);
+    endGame("Host left — game ended.");
+  };
+
   const off1 = onValue(hostPresenceRef, (snap)=>{
     const present = !!snap.val();
     console.log("[hostPresence] present =", present);
-    if (!present) endGame("Host left — game ended.");
+    if (present) {
+      clearGrace();
+      return;
+    }
+    // If not present, start/refresh a short grace timer before ending (only if started)
+    clearGrace();
+    hostGraceTimer = setTimeout(()=> maybeEnd("presence=false after grace"), 5000);
   }, (err)=> console.error("[hostPresence] ERROR", err));
+
   const off2 = onValue(hostPlayerRef, (snap)=>{
     const connected = snap.exists() ? !!snap.val().connected : false;
     console.log("[hostPlayer] connected =", connected);
-    if (!connected) endGame("Host left — game ended.");
+    if (connected) {
+      clearGrace();
+      return;
+    }
+    clearGrace();
+    hostGraceTimer = setTimeout(()=> maybeEnd("player.connected=false after grace"), 5000);
   }, (err)=> console.error("[hostPlayer] ERROR", err));
 
   unsubs.push(off1, off2);
@@ -445,9 +473,7 @@ chatSend.addEventListener("click", ()=>{
   });
   chatInput.value = "";
 });
-chatInput.addEventListener("keydown", e=>{
-  if(e.key==="Enter") chatSend.click();
-});
+chatInput.addEventListener("keydown", e=>{ if(e.key==="Enter") chatSend.click(); });
 
 /* ---------- Show modal on load ---------- */
 showModal(true);
