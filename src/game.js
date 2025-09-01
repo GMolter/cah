@@ -2,7 +2,6 @@ import { createStore } from "./tiny-store.js";
 
 const ROUND_SECONDS = 60;
 
-/* Demo decks — replace with your packs */
 const sampleBlack = [
   "In the beginning, there was _____.",
   "What did I bring back from Mexico?",
@@ -18,11 +17,9 @@ const sampleWhite = [
   "An awkward silence","Jazz hands","Grandma's laptop","The last slice","Free samples"
 ];
 
-/* helpers */
 const id  = () => Math.random().toString(36).slice(2,10);
 const now = () => Date.now();
 
-/* deck lives outside state (no functions in state) */
 function makeDeck(list){
   const cards = [...list].map((t,i)=>({ id:`c${i}-${id()}`, text:t }));
   const draw = () => cards.splice(Math.floor(Math.random()*cards.length),1)[0];
@@ -31,6 +28,7 @@ function makeDeck(list){
 }
 
 export function createGameStore(transport){
+  // Deck helpers live OUTSIDE state (no functions in state)
   const deckBlack = makeDeck(sampleBlack);
   const deckWhite = makeDeck(sampleWhite);
 
@@ -46,7 +44,6 @@ export function createGameStore(transport){
   let isHost = false;
   let myId = null;
 
-  /* heartbeat + deadline */
   setInterval(() => {
     const s = store.get();
     if(isHost){
@@ -117,7 +114,7 @@ export function createGameStore(transport){
       }
 
       if(type === "state"){
-        if(!isHost) store.replace(payload.state);
+        if(!isHost) store.replace(payload.state); // pure JSON only
       }
     },
 
@@ -138,7 +135,6 @@ export function createGameStore(transport){
     judgePick(judgeId, submissionId){ net("judge-pick", { judgeId, submissionId }); }
   };
 
-  /* host helpers */
   function ensureHand(pid, player){
     while(player.hand.length < 7 && deckWhite.size() > 0){
       player.hand.push(deckWhite.draw());
