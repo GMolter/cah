@@ -9,9 +9,8 @@ import {
 
 /* ---------- DOM ---------- */
 const $ = (s)=> document.querySelector(s);
+const joinModal = $("#join-modal");
 const joinBtn   = $("#join-btn");
-const newBtn    = $("#new-btn");
-const startBtn  = $("#start-btn");
 const roomInput = $("#room-input");
 const nameInput = $("#name-input");
 const chatInput = $("#chat-input");
@@ -19,6 +18,7 @@ const chatSend  = $("#chat-send");
 
 /* ---------- Local State & Store ---------- */
 const defaultName = ()=> localStorage.getItem("cadh-name") || `Player-${Math.floor(Math.random()*90+10)}`;
+
 nameInput.value = defaultName();
 roomInput.value = localStorage.getItem("cadh-room") || "";
 
@@ -39,12 +39,23 @@ let currentRoom = null;
 // For host only
 let hostDecks = null;
 
+// Unsubscribers for listeners so we can detach on game end
+let unsubs = [];
+
 /* ---------- Helpers ---------- */
 function generateRoomCode(){
+  // keep 6 chars for UX, but since we removed "create", this is for host-created rooms only
   return Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
 }
 function canIHost(){
   return store.get().hostUid && store.get().hostUid === my.uid;
+}
+function showModal(show){
+  joinModal.style.display = show ? "flex" : "none";
+}
+function clearLocal(){
+  localStorage.removeItem("cadh-name");
+  localStorage.removeItem("cadh-room");
 }
 
 /* ---------- Firebase wiring ---------- */
@@ -58,7 +69,7 @@ async function joinRoom(code, desiredName){
 
   currentRoom = code;
 
-  // 1) Add/refresh self as a player FIRST (makes us a member)
+  // 1) Add/refresh self as a player FIRST (membership -> enables reads/writes elsewhere)
   const playerRef = ref(db, `rooms/${code}/players/${my.uid}`);
   const existing = await get(playerRef);
   const prevScore = existing.exists() ? (existing.val().score || 0) : 0;
@@ -78,56 +89,113 @@ async function joinRoom(code, desiredName){
 
   // 2) Try to become host (first writer wins; rules allow if unset or already me)
   const hostUidRef = ref(db, `rooms/${code}/hostUid`);
-  await set(hostUidRef, my.uid).catch(()=>{}); // ignore if someone else already set it
+  await set(hostUidRef, my.uid).catch(()=>{}); // ignore if already set to someone else
 
   // 3) Set createdAt once (ignore if exists)
   const createdAtRef = ref(db, `rooms/${code}/createdAt`);
   await set(createdAtRef, Date.now()).catch(()=>{});
 
-  // Subscribe to room data
+  // Subscribe to room data (and remember unsubs)
   bindRoomSubscriptions(code);
 
   // If I'm host, init local decks
   if (canIHost()) {
     hostDecks = createHostDecks();
   }
+
+  // Hide modal once joined
+  showModal(false);
 }
 
 function bindRoomSubscriptions(code){
-  onValue(ref(db, `rooms/${code}/hostUid`), (snap)=>{
-    store.patch({ hostUid: snap.val() || null });
+  // clear old unsubs
+  unsubs.forEach(fn => fn && fn());
+  unsubs = [];
+
+  // Small helper to wrap onValue with unsubs
+  const listen = (path, cb) => {
+    const r = ref(db, path);
+    const off = onValue(r, cb);
+    // Firebase v9 onValue returns the unsubscribe function
+    unsubs.push(off);
+  };
+
+  listen(`rooms/${code}/hostUid`, (snap)=>{
+    const hostUid = snap.val() || null;
+    store.patch({ hostUid });
+    // Watch host presence; if host leaves, end game
+    attachHostPresenceWatcher(code, hostUid);
     if (canIHost() && !hostDecks) hostDecks = createHostDecks();
   });
 
-  onValue(ref(db, `rooms/${code}/started`), (snap)=>{
+  listen(`rooms/${code}/started`, (snap)=>{
     store.patch({ started: !!snap.val() });
   });
 
-  onValue(ref(db, `rooms/${code}/players`), (snap)=>{
+  listen(`rooms/${code}/players`, (snap)=>{
     store.patch({ players: snap.val() || {} });
   });
 
-  onValue(ref(db, `rooms/${code}/hands`), (snap)=>{
+  listen(`rooms/${code}/hands`, (snap)=>{
     store.patch({ hands: snap.val() || {} });
   });
 
-  onValue(ref(db, `rooms/${code}/round`), (snap)=>{
+  listen(`rooms/${code}/round`, (snap)=>{
     store.patch({ round: snap.val() || { number:0, judgeUid:null, black:null, deadline:0, pickedSubmissionId:null } });
   });
 
-  onValue(ref(db, `rooms/${code}/submissions`), (snap)=>{
+  listen(`rooms/${code}/submissions`, (snap)=>{
     const val = snap.val() || {};
     const arr = Object.entries(val).map(([k,v])=> ({ id:k, ...v }));
     arr.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0));
     store.patch({ submissions: arr });
   });
 
-  onValue(ref(db, `rooms/${code}/chat`), (snap)=>{
+  listen(`rooms/${code}/chat`, (snap)=>{
     const val = snap.val() || {};
     const arr = Object.values(val);
     arr.sort((a,b)=> (a.ts||0) - (b.ts||0));
     store.patch({ chat: arr });
   });
+}
+
+function attachHostPresenceWatcher(code, hostUid){
+  // Remove previous host presence watcher (if any)
+  // We'll rely on existing unsubs clearing when re-bind happens.
+
+  if (!hostUid) return;
+
+  const hostPresenceRef = ref(db, `rooms/${code}/presence/${hostUid}`);
+  const hostPlayerRef   = ref(db, `rooms/${code}/players/${hostUid}`);
+
+  const off1 = onValue(hostPresenceRef, (snap)=>{
+    const present = !!snap.val();
+    if (!present) endGame("Host left — game ended.");
+  });
+  const off2 = onValue(hostPlayerRef, (snap)=>{
+    const connected = snap.exists() ? !!snap.val().connected : false;
+    if (!connected) endGame("Host left — game ended.");
+  });
+
+  unsubs.push(off1, off2);
+}
+
+/* ---------- End game (host left) ---------- */
+function endGame(message){
+  alert(message || "Game ended.");
+  // detach listeners
+  unsubs.forEach(fn=> fn && fn());
+  unsubs = [];
+  // clear local storage
+  clearLocal();
+  // reset UI state
+  store.replace({
+    hostUid: null, started:false, players:{}, hands:{},
+    round:{ number:0, judgeUid:null, black:null, deadline:0, pickedSubmissionId:null },
+    submissions:[], chat:[]
+  });
+  // show join modal again
+  showModal(true);
 }
 
 /* ---------- Host actions ---------- */
@@ -139,6 +207,7 @@ async function hostStartRound(){
     alert("Need at least 3 players to start.");
     return;
   }
+  if (!hostDecks) hostDecks = createHostDecks();
 
   const nextJudge = computeNextJudgeId(s.players, s.round?.judgeUid || null);
   const black = hostDecks.black.draw();
@@ -184,7 +253,7 @@ async function hostPickWinner(submissionId){
   const sub = subSnap.val();
   const winner = sub.by;
 
-  // increment score atomically (read-modify-write acceptable for demo)
+  // increment score
   const playerRef = ref(db, `rooms/${currentRoom}/players/${winner}`);
   const pSnap = await get(playerRef);
   if (pSnap.exists()){
@@ -202,6 +271,9 @@ async function hostPickWinner(submissionId){
 /* ---------- Player actions ---------- */
 async function sendChat(msg){
   if (!currentRoom || !msg.trim()) return;
+  const s = store.get();
+  // must be member
+  if (!s.players || !s.players[my.uid]) return;
   const item = { from: my.uid, name: my.name, text: msg.trim(), ts: Date.now() };
   await set(ref(db, `rooms/${currentRoom}/chat/${id()}`), item);
 }
@@ -229,39 +301,43 @@ async function playCard(cardId){
 }
 
 /* ---------- Wire UI ---------- */
-const canStartRef = { value:false };
-
 authReady.then(()=>{
   ui = new UI(store, {
     meId: auth.currentUser.uid,
     onPlayCard: playCard,
     onJudgePick: (submissionId)=> { if (canIHost()) hostPickWinner(submissionId); },
-    onStartRound: hostStartRound,
-    canStartRef
+    onStartRound: hostStartRound
+  });
+
+  // If we have saved room/name and want to auto-rejoin, uncomment:
+  // const savedRoom = localStorage.getItem("cadh-room");
+  // const savedName = localStorage.getItem("cadh-name");
+  // if (savedRoom && savedName) joinRoom(savedRoom, savedName).catch(()=> showModal(true));
+});
+
+/* ---------- Modal events ---------- */
+joinBtn.addEventListener("click", ()=>{
+  const code = (roomInput.value || "").trim().toUpperCase();
+  const name = (nameInput.value || "").trim() || defaultName();
+  if(!code){ roomInput.focus(); return; }
+  joinRoom(code, name).catch(err=>{
+    alert("Could not join: " + (err?.message || err));
   });
 });
 
-/* ---------- DOM Events ---------- */
+roomInput.addEventListener("keydown", e=>{ if(e.key==="Enter") joinBtn.click(); });
+nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") joinBtn.click(); });
+
+/* ---------- Chat events ---------- */
 chatSend.addEventListener("click", ()=>{
   const msg = chatInput.value.trim();
   if(!msg) return;
-  sendChat(msg);
+  sendChat(msg).catch(err=> alert("Chat failed: " + (err?.message || err)));
   chatInput.value = "";
 });
 chatInput.addEventListener("keydown", e=>{
   if(e.key==="Enter") chatSend.click();
 });
 
-joinBtn.addEventListener("click", ()=> {
-  const code = (roomInput.value || "").trim().toUpperCase();
-  const name = (nameInput.value || "").trim() || defaultName();
-  if(!code) { roomInput.focus(); return; }
-  joinRoom(code, name);
-});
-
-newBtn.addEventListener("click", ()=> {
-  const code = generateRoomCode();
-  roomInput.value = code;
-  const name = (nameInput.value || "").trim() || defaultName();
-  joinRoom(code, name);
-});
+/* ---------- Show modal on load ---------- */
+showModal(true);
