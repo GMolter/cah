@@ -15,6 +15,7 @@
         <input id="name-input" class="input" placeholder="Your name" maxlength="18" />
         <button id="join-btn" class="btn primary">Join</button>
         <button id="new-btn" class="btn ghost">New Room</button>
+        <button id="start-btn" class="btn" title="Host only">Start Round</button>
       </div>
     </header>
 
@@ -29,6 +30,8 @@
       </section>
 
       <section class="table" id="table">
+        <div class="banner" id="banner" hidden></div>
+
         <div class="black-card" id="black-card">
           <div class="black-text" id="black-text">Waiting for round…</div>
           <div class="timer" id="timer">
@@ -55,6 +58,9 @@
     <footer class="hand" id="hand"></footer>
   </div>
 
+  <!-- Firebase SDKs -->
+  <script type="module" src="src/firebase.js"></script>
+  <!-- App -->
   <script type="module" src="src/app.js"></script>
 </body>
 </html>
