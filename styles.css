@@ -2,11 +2,9 @@
   --bg:#0e0e10;
   --panel:#17171b;
   --text:#f5f6f8;
-  --muted:#a7aab3;
   --accent:#8b5cf6;
   --accent-2:#22d3ee;
   --good:#4ade80;
-  --warn:#f59e0b;
   --card-white:#fff;
   --shadow:0 10px 30px rgba(0,0,0,.35);
   --radius:16px;
@@ -16,7 +14,7 @@
 html,body{height:100%}
 body{
   margin:0;
-  background:radial-gradient(1200px 700px at 10% -10%, #17171b 0,#0f0f12 45%, #0b0b0e 100%), var(--bg);
+  background:radial-gradient(1200px 700px at 10% -10%, #17171b 0,#0f0f12 45%, #0b0b0e 100%), #0e0e10;
   color:var(--text);
   font:500 16px/1.4 Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
@@ -101,7 +99,6 @@ body{
   width:100%;
 }
 
-/* Card styles */
 .card{
   height:150px; padding:14px; border-radius:16px; border:1px solid #e5e7eb; background:var(--card-white);
   color:#0b0c0f; font-weight:800; font-size:1.2rem; display:flex; align-items:center; justify-content:center; text-align:center;
@@ -112,7 +109,6 @@ body{
 .card.selected{outline:3px solid var(--accent); outline-offset:3px}
 .card.disabled{pointer-events:none; filter:grayscale(.35); opacity:.7}
 
-/* hand */
 .hand{
   position:sticky; bottom:0; background:linear-gradient(180deg,transparent,#0c0c0f 30%);
   padding:14px 16px 20px;
@@ -120,7 +116,6 @@ body{
   border-top:1px solid #24242a;
 }
 
-/* Animations */
 .fade-in{animation:fadeIn .35s ease both}
 .slide-up{animation:slideUp .35s ease both}
 .flip-in{animation:flipIn .5s cubic-bezier(.2,.8,.2,1) both}
@@ -134,7 +129,6 @@ body{
   50%{box-shadow:0 0 0 10px rgba(139,92,246,.07)}
 }
 
-/* Responsive */
 @media (max-width:1000px){
   .layout{grid-template-columns:1fr}
   .panel.players{order:3}
