@@ -1,9 +1,6 @@
-// ui.js
-export const UI_BUILD = "UI_BUILD 2025-09-01T06:05Z";
+// /src/ui.js
+export const UI_BUILD = "UI_BUILD 2025-09-01T06:20Z";
 
-/**
- * Very small UI binder that reacts to store changes and props.
- */
 export class UI {
   constructor(store, { meId, onPlayCard, onJudgePick, onStartRound }){
     this.store = store;
@@ -12,84 +9,124 @@ export class UI {
     this.onJudgePick = onJudgePick;
     this.onStartRound = onStartRound;
 
-    this.$roomPill = document.querySelector("#room-pill");
-    this.$black = document.querySelector("#black-card .card-text");
-    this.$timer = document.querySelector("#round-timer");
-    this.$hand = document.querySelector("#hand-cards");
-    this.$subs = document.querySelector("#submissions");
-    this.$start = document.querySelector("#start-btn");
-    this.$status = document.querySelector("#status");
-    this.$chatLog = document.querySelector("#chat-log");
+    this.$players     = document.getElementById("players");
+    this.$playerCount = document.getElementById("player-count");
+    this.$roundPill   = document.getElementById("round-pill");
+    this.$rolePill    = document.getElementById("role-pill");
+    this.$hostControls= document.getElementById("host-controls");
+    this.$startBtn    = document.getElementById("start-btn");
+    this.$blackSlot   = document.getElementById("black-slot");
+    this.$stage       = document.getElementById("stage");
+    this.$roomTag     = document.getElementById("room-tag");
+    this.$chatLog     = document.getElementById("chat-log");
 
-    // start button action (bound once)
-    this.$start.addEventListener("click", ()=> this.onStartRound?.());
+    if(this.$startBtn){
+      this.$startBtn.addEventListener("click", ()=> this.onStartRound && this.onStartRound());
+    }
 
-    store.subscribe((s)=> this.render(s));
+    this.unsub = store.subscribe((s)=> this.render(s));
   }
+
+  setRoom(code){ if(this.$roomTag) this.$roomTag.textContent = code ? `Room: ${code}` : ""; }
 
   render(s){
-    // Room pill
-    const code = localStorage.getItem("cadh-room") || "";
-    this.$roomPill.textContent = code ? `Room: ${code}` : "Not in room";
+    const me = this.meId;
+    const players = s.players || {};
+    const pIds = Object.keys(players);
+    const iAmHost = s.hostUid && s.hostUid === me;
+
+    // Players list
+    if(this.$players){
+      this.$players.innerHTML = "";
+      pIds.forEach(pid=>{
+        const p = players[pid];
+        const el = document.createElement("div");
+        el.className = "pill" + (pid===me?" me":"");
+        el.textContent = `${p.name || "Player"}${p.submitted?" ✓":""}`;
+        this.$players.appendChild(el);
+      });
+    }
+    if(this.$playerCount){
+      this.$playerCount.textContent = `${pIds.length} joined`;
+    }
+
+    // Role
+    if(this.$rolePill){
+      const role = s.round?.judgeUid === me ? "Judge" : (iAmHost ? "Host" : "Player");
+      this.$rolePill.textContent = role;
+    }
+
+    // Host controls
+    if(this.$hostControls){
+      const show = iAmHost && pIds.length >= 3;
+      this.$hostControls.style.display = show ? "flex" : "none";
+    }
+
+    // Round pill
+    if(this.$roundPill){
+      const rn = s.round?.number || 0;
+      this.$roundPill.textContent = rn ? `Round ${rn}` : "Waiting…";
+    }
 
     // Black card
-    const black = s.round?.black?.text || "Waiting to start…";
-    this.$black.textContent = black;
-
-    // Start button visibility
-    const isHost = s.hostUid && s.hostUid === this.meId;
-    const playerCount = Object.keys(s.players||{}).length;
-    const canStart = isHost && playerCount >= 3 && !s.started;
-    this.$start.style.display = canStart ? "inline-block" : "none";
-
-    // Status
-    this.$status.textContent =
-      isHost
-        ? (playerCount < 3 ? `Waiting for ${3-playerCount} more player(s)…` : (s.started ? "Round in progress" : "Ready to start"))
-        : (s.started ? "Round in progress" : "Waiting for host…");
-
-    // Hand
-    const myHand = Object.values((s.hands||{})[this.meId] || {});
-    this.$hand.innerHTML = "";
-    for (const c of myHand){
-      const el = document.createElement("div");
-      el.className = "card whitecard";
-      el.innerHTML = `<div class="card-text">${escapeHTML(c.text)}</div>`;
-      el.addEventListener("click", ()=> this.onPlayCard?.(c.id));
-      this.$hand.appendChild(el);
-    }
-
-    // Submissions
-    this.$subs.innerHTML = "";
-    const isJudge = s.round?.judgeUid === this.meId;
-    for (const sub of s.submissions){
-      const el = document.createElement("div");
-      el.className = "card whitecard";
-      el.innerHTML = `<div class="card-text">${escapeHTML(sub.card?.text||"")}</div>`;
-      if (isJudge && !s.round?.pickedSubmissionId){
-        el.style.outline = "2px solid transparent";
-        el.style.cursor = "pointer";
-        el.addEventListener("click", ()=> this.onJudgePick?.(sub.id));
-        el.addEventListener("mouseenter", ()=> el.style.outline = "2px solid var(--accent)");
-        el.addEventListener("mouseleave", ()=> el.style.outline = "2px solid transparent");
+    if(this.$blackSlot){
+      this.$blackSlot.innerHTML = "";
+      const black = s.round?.black;
+      if(black){
+        const b = document.createElement("div");
+        b.className = "card black-card";
+        b.textContent = black.text;
+        this.$blackSlot.appendChild(b);
       }
-      this.$subs.appendChild(el);
     }
 
-    // Chat
-    this.$chatLog.innerHTML = "";
-    for (const m of s.chat){
-      const row = document.createElement("div");
-      row.className = "chat-item";
-      row.innerHTML = `<span class="name">${escapeHTML(m.name||"")}</span><span class="text">${escapeHTML(m.text||"")}</span>`;
-      this.$chatLog.appendChild(row);
+    // Stage (hand or submissions)
+    if(this.$stage){
+      this.$stage.innerHTML = "";
+      if(s.round?.judgeUid === me){
+        // I am judge -> see submissions to pick
+        const wrap = document.createElement("div");
+        wrap.className = "submissions";
+        (s.submissions || []).forEach(sub=>{
+          const c = document.createElement("div");
+          c.className = "card";
+          c.textContent = sub?.card?.text || "(missing)";
+          c.addEventListener("click", ()=> this.onJudgePick && this.onJudgePick(sub.id));
+          wrap.appendChild(c);
+        });
+        this.$stage.appendChild(wrap);
+      }else{
+        // I am player -> show my hand
+        const hand = (s.hands && s.hands[this.meId]) || {};
+        const wrap = document.createElement("div");
+        wrap.className = "hand";
+        Object.values(hand).forEach(card=>{
+          const c = document.createElement("div");
+          c.className = "card";
+          c.textContent = card.text;
+          c.addEventListener("click", ()=> this.onPlayCard && this.onPlayCard(card.id));
+          wrap.appendChild(c);
+        });
+        this.$stage.appendChild(wrap);
+      }
     }
-    this.$chatLog.scrollTop = this.$chatLog.scrollHeight;
+
+    // Chat log
+    if(this.$chatLog){
+      this.$chatLog.innerHTML = "";
+      (s.chat || []).forEach(m=>{
+        const line = document.createElement("div");
+        line.className = "msg";
+        line.innerHTML = `<span class="name">${m.name || "?"}:</span> ${escapeHtml(m.text||"")}`;
+        this.$chatLog.appendChild(line);
+      });
+      this.$chatLog.scrollTop = this.$chatLog.scrollHeight;
+    }
   }
 }
 
-function escapeHTML(s){
-  return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[m]));
 }
-
-console.log(UI_BUILD);
