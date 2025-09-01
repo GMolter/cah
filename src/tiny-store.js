@@ -1,29 +1,15 @@
-// Minimal reactive store without structuredClone
+// tiny-store.js
+export const STORE_BUILD = "STORE_BUILD 2025-09-01T06:05Z";
+
 export function createStore(initial){
-  let state = initial;
+  let state = structuredClone(initial);
   const subs = new Set();
-
-  function get(){ return state; }
-  function patch(partial){
-    state = deepMerge(state, partial);
-    subs.forEach(fn => fn(state));
-  }
-  function replace(next){
-    state = next;
-    subs.forEach(fn => fn(state));
-  }
-  function subscribe(fn){ subs.add(fn); fn(state); return () => subs.delete(fn); }
-
-  return { get, patch, replace, subscribe };
+  return {
+    get: ()=> state,
+    subscribe: (fn)=> { subs.add(fn); return ()=> subs.delete(fn); },
+    replace: (next)=> { state = structuredClone(next); subs.forEach(s=>s(state)); },
+    patch: (partial)=> { Object.assign(state, partial); subs.forEach(s=>s(state)); }
+  };
 }
 
-function deepMerge(target, source){
-  if (typeof source !== "object" || source === null) return source;
-  const out = Array.isArray(target) ? [...target] : { ...target };
-  for (const [k, v] of Object.entries(source)){
-    if (Array.isArray(v)) out[k] = v.slice();
-    else if (typeof v === "object") out[k] = deepMerge(target?.[k] ?? {}, v);
-    else out[k] = v;
-  }
-  return out;
-}
+console.log(STORE_BUILD);
