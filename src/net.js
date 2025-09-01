@@ -1,7 +1,7 @@
 export class Transport {
   constructor(roomCode){
     this.room = roomCode;
-    this.channelName = `cah-room-${roomCode}`;
+    this.channelName = `cadh-room-${roomCode}`;
     this.bc = ("BroadcastChannel" in self) ? new BroadcastChannel(this.channelName) : null;
     this.listeners = new Set();
 
@@ -26,9 +26,7 @@ export class Transport {
     if(this.bc){
       this.bc.postMessage(payload);
     }else{
-      // localStorage fanout
       localStorage.setItem(this.channelName, JSON.stringify(payload));
-      // cleanup quickly to keep storage small
       setTimeout(()=> localStorage.removeItem(this.channelName), 50);
     }
   }
