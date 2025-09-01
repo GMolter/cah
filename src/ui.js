@@ -1,13 +1,19 @@
 export class UI{
-  constructor(store, { meId, onPlayCard, onJudgePick }){
+  constructor(store, { meId, onPlayCard, onJudgePick, onStartRound, canStartRef }){
     this.store = store;
     this.meId = meId;
     this.onPlayCard = onPlayCard;
     this.onJudgePick = onJudgePick;
+    this.onStartRound = onStartRound;
+    this.canStartRef = canStartRef;
 
     this.$ = (sel)=> document.querySelector(sel);
     this.unsub = store.subscribe( s => this.render(s) );
     this.timerInterval = setInterval(()=> this.renderTimer(this.store.get()), 250);
+
+    // Start button
+    const startBtn = this.$("#start-btn");
+    startBtn.addEventListener("click", ()=> this.onStartRound());
 
     this.render(store.get());
   }
@@ -24,6 +30,30 @@ export class UI{
     this.renderSubmissions(s);
     this.renderHand(s);
     this.renderTimer(s);
+    this.renderBannerAndStart(s);
+  }
+
+  renderBannerAndStart(s){
+    const banner = this.$("#banner");
+    const startBtn = this.$("#start-btn");
+
+    const playerCount = Object.keys(s.players||{}).length;
+    const isHost = s.hostUid && s.hostUid === this.meId;
+    const gameStarted = !!s.started;
+
+    const need = Math.max(0, 3 - playerCount);
+    if (!gameStarted && playerCount < 3){
+      banner.hidden = false;
+      banner.textContent = `Waiting for players — need ${need} more to start (min 3).`;
+    } else {
+      banner.hidden = true;
+      banner.textContent = "";
+    }
+
+    // Host-only button; disabled until >=3
+    startBtn.hidden = !isHost;
+    startBtn.disabled = !(isHost && playerCount >= 3);
+    if (this.canStartRef) this.canStartRef.value = (isHost && playerCount >= 3);
   }
 
   renderPlayers(s){
@@ -32,19 +62,25 @@ export class UI{
     list.innerHTML = "";
     board.innerHTML = "";
 
-    const ids = Object.keys(s.players).sort();
+    const ids = Object.keys(s.players||{}).sort((a,b)=>{
+      const ja = s.players[a].joinedAt || 0;
+      const jb = s.players[b].joinedAt || 0;
+      if (ja !== jb) return ja - jb;
+      return a.localeCompare(b);
+    });
+
     ids.forEach(pid=>{
       const p = s.players[pid];
       const li = document.createElement("li");
-      if(pid===s.round.judgeId) li.classList.add("pulse");
+      if(pid===s.round?.judgeUid) li.classList.add("pulse");
       if(pid===this.meId) li.classList.add("me");
 
       const left = document.createElement("div");
       left.textContent = p.name;
       const right = document.createElement("div");
       const badge = document.createElement("span");
-      badge.className = "badge " + (pid===s.round.judgeId ? "judge" : p.submitted ? "ok" : "wait");
-      badge.textContent = pid===s.round.judgeId ? "Judge" : p.submitted ? "✓" : "…";
+      badge.className = "badge " + (pid===s.round?.judgeUid ? "judge" : p.submitted ? "ok" : "wait");
+      badge.textContent = pid===s.round?.judgeUid ? "Judge" : p.submitted ? "✓" : "…";
       right.appendChild(badge);
 
       li.appendChild(left); li.appendChild(right);
@@ -59,26 +95,27 @@ export class UI{
   renderChat(s){
     const log = this.$("#chat-log");
     if(!this._chatLen) this._chatLen = 0;
-    if(s.chat.length === this._chatLen) return;
+    const msgs = s.chat || [];
+    if(msgs.length === this._chatLen) return;
     const frag = document.createDocumentFragment();
-    for(let i=this._chatLen; i<s.chat.length; i++){
-      const m = s.chat[i];
+    for(let i=this._chatLen; i<msgs.length; i++){
+      const m = msgs[i];
       const el = document.createElement("div");
       el.className = "chat-msg fade-in";
-      el.innerHTML = `<span class="chat-actor">${m.actorName}:</span> ${escapeHTML(m.text)}`;
+      el.innerHTML = `<span class="chat-actor">${m.name}:</span> ${escapeHTML(m.text)}`;
       frag.appendChild(el);
     }
     log.appendChild(frag);
     log.scrollTop = log.scrollHeight;
-    this._chatLen = s.chat.length;
+    this._chatLen = msgs.length;
   }
 
   renderBlackCard(s){
     const text = this.$("#black-text");
     const jc = this.$("#judge-stack");
-    text.textContent = s.round.black ? s.round.black.text : "Waiting for round…";
-    if(s.round.judgeId){
-      jc.title = `Judge: ${s.players[s.round.judgeId]?.name || "—"}`;
+    text.textContent = s.round?.black ? s.round.black.text : "Waiting for round…";
+    if(s.round?.judgeUid){
+      jc.title = `Judge: ${s.players?.[s.round.judgeUid]?.name || "—"}`;
     }
   }
 
@@ -86,17 +123,17 @@ export class UI{
     const area = this.$("#submissions");
     area.innerHTML = "";
 
-    const isJudge = this.meId === s.round.judgeId;
+    const isJudge = this.meId === s.round?.judgeUid;
 
-    s.round.submissions.forEach(sub=>{
+    (s.submissions || []).forEach(sub=>{
       const card = elCard(sub.card.text);
       card.classList.add("slide-up");
-      if(isJudge && !s.round.pickedId) {
+      if(isJudge && !s.round?.pickedSubmissionId) {
         card.addEventListener("click", ()=> this.onJudgePick(sub.id));
       }else{
         card.classList.add("disabled");
       }
-      if(s.round.pickedId === sub.id){
+      if(s.round?.pickedSubmissionId === sub.id){
         card.style.outline = "4px solid var(--good)";
         card.style.outlineOffset = "4px";
       }
@@ -105,13 +142,13 @@ export class UI{
   }
 
   renderHand(s){
-    const me = s.players[this.meId];
+    const me = s.players?.[this.meId];
     const hand = this.$("#hand");
     hand.innerHTML = "";
 
-    const canPlay = s.round.judgeId !== this.meId && !me?.submitted;
+    const canPlay = s.round?.judgeUid !== this.meId && !me?.submitted && s.started;
 
-    me?.hand?.forEach(c=>{
+    (s.hands?.[this.meId] ? Object.values(s.hands[this.meId]) : []).forEach(c=>{
       const card = elCard(c.text);
       card.classList.add("flip-in");
       if(canPlay){
@@ -128,15 +165,16 @@ export class UI{
   }
 
   renderTimer(s){
-    const left = Math.max(0, Math.floor((s.round.deadline - Date.now())/1000));
+    const left = Math.max(0, Math.floor(((s.round?.deadline || 0) - Date.now())/1000));
     const dash = (left / 60) * 100;
     const num = this.$("#timer-number");
     const fg = this.$("#timer-fg");
-    num.textContent = s.round.deadline ? `${left}s` : "—";
+    num.textContent = s.round?.deadline ? `${left}s` : "—";
     fg.setAttribute("stroke-dasharray", `${dash},100`);
   }
 }
 
+/* helpers */
 function elCard(text){
   const el = document.createElement("div");
   el.className = "card";
