@@ -1,4 +1,4 @@
-// /src/app.js  — with verbose debug logging
+// /src/app.js  — fixed join flow (no pre-read), verbose debug logging
 import { app, auth, db, authReady } from "./firebase.js";
 import { createHostDecks, computeNextJudgeId, ROUND_SECONDS, id } from "./game.js";
 import { createStore } from "./tiny-store.js";
@@ -77,38 +77,25 @@ async function joinRoom(code, desiredName){
   localStorage.setItem("cadh-room", code);
   currentRoom = code;
 
-  // 1) Add/refresh self as a player FIRST (membership enables reads/writes in most rules).
+  // 1) Create/overwrite my player node WITHOUT reading first (membership gate would block reads).
   const playerRef = ref(db, `rooms/${code}/players/${my.uid}`);
   try {
-    console.log("[joinRoom] Reading player node", playerRef.toString());
-    const existing = await get(playerRef);
-    console.log("[joinRoom] Existing player snapshot:", existing.exists() ? existing.val() : null);
-
-    if (!existing.exists()){
-      console.log("[joinRoom] Creating player node via set()");
-      await set(playerRef, {
-        name: my.name,
-        joinedAt: Date.now(),
-        connected: true,
-        score: 0,
-        submitted: false
-      });
-      console.log("[joinRoom] Player created OK");
-    } else {
-      console.log("[joinRoom] Updating player node via update()");
-      await update(playerRef, {
-        name: my.name,
-        connected: true,
-        submitted: false
-        // keep joinedAt & score from existing
-      });
-      console.log("[joinRoom] Player updated OK");
-    }
+    console.log("[joinRoom] Creating my player via set()", playerRef.toString());
+    await set(playerRef, {
+      name: my.name,
+      joinedAt: Date.now(),
+      connected: true,
+      score: 0,
+      submitted: false
+    });
+    console.log("[joinRoom] Player set OK");
   } catch (err) {
-    console.error("[joinRoom] ERROR writing players node:", err);
+    console.error("[joinRoom] ERROR setting players node (this must succeed to gain membership):", err);
+    alert("Could not join: " + (err?.message || err));
+    return; // cannot proceed without membership
   }
 
-  // 2) Presence (self-managed)
+  // 2) Presence (self-managed). No read required, so fine either way.
   const presenceRef = ref(db, `rooms/${code}/presence/${my.uid}`);
   try {
     console.log("[joinRoom] Setting presence true", presenceRef.toString());
@@ -120,7 +107,7 @@ async function joinRoom(code, desiredName){
     console.error("[joinRoom] ERROR writing presence:", err);
   }
 
-  // 3) Try to become host (first writer wins; rules allow if unset or already me)
+  // 3) Try to become host (first writer wins; expected to fail if someone else already host).
   const hostUidRef = ref(db, `rooms/${code}/hostUid`);
   try {
     console.log("[joinRoom] Attempting to set hostUid:", hostUidRef.toString(), "->", my.uid);
@@ -140,7 +127,7 @@ async function joinRoom(code, desiredName){
     console.warn("[joinRoom] createdAt already exists / write blocked:", err);
   }
 
-  // 5) Subscribe to room data
+  // 5) Subscribe to room data (now that we’re a member, reads should be allowed)
   console.log("[joinRoom] Binding subscriptions for room", code);
   bindRoomSubscriptions(code);
 
