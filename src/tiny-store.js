@@ -1,5 +1,5 @@
+// NO structuredClone here.
 export function createStore(initial){
-  // Keep reference; we manage immutability via merges (no structuredClone).
   let state = initial;
   const subs = new Set();
 
