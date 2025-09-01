@@ -27,10 +27,7 @@ function makeDeck(list){
 }
 
 export function createHostDecks(){
-  return {
-    black: makeDeck(sampleBlack),
-    white: makeDeck(sampleWhite)
-  };
+  return { black: makeDeck(sampleBlack), white: makeDeck(sampleWhite) };
 }
 
 export function computeNextJudgeId(playerMap, currentJudgeId){
