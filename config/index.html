@@ -27,7 +27,7 @@
 <body>
   <div class="card">
     <h1>Create a Room Code</h1>
-    <div class="muted small">This page signs in anonymously, creates a room in Firebase (<span class="mono">/rooms/{CODE}</span>), and gives you a link to share.</div>
+    <div class="muted small">This page signs in anonymously and reserves a room code by setting <span class="mono">/rooms/{CODE}/createdAt</span>. It does <b>not</b> set a host.</div>
 
     <div class="grid">
       <div id="room-code" class="code">••••••</div>
@@ -44,7 +44,7 @@
   </div>
 
   <script type="module">
-    console.log("CONFIG_BUILD","2025-09-01T05:55Z");
+    console.log("CONFIG_BUILD","2025-09-01T06:05Z");
 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
     import {
@@ -58,11 +58,10 @@
     import {
       getDatabase,
       ref,
-      set,
-      runTransaction
+      set
     } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
-    // ==== Firebase config (same project) ====
+    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
       authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
@@ -73,7 +72,7 @@
       databaseURL: "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com"
     };
 
-    // ==== UI helpers ====
+    // UI helpers
     const $ = (s)=> document.querySelector(s);
     const codeEl = $("#room-code");
     const statusEl = $("#status");
@@ -82,116 +81,56 @@
     const copyLinkBtn = $("#copy-link");
     const regenBtn = $("#regen");
 
-    const v = "7"; // cache-bust version for index.html
+    const v = "8"; // cache-bust for index.html
     const genCode = () => Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
-
-    function setStatus(msg){
-      console.log("[status]", msg);
-      statusEl.textContent = msg;
-    }
-    function applyUI(code){
+    const setStatus = (m)=>{ console.log("[status]", m); statusEl.textContent = m; };
+    const applyUI = (code)=> {
       codeEl.textContent = code;
-      const url = `index.html?room=${encodeURIComponent(code)}&v=${v}`;
+      const url = `../index.html?room=${encodeURIComponent(code)}&v=${v}`;
       openLink.href = url;
       openLink.textContent = `Open room ${code} in game →`;
-    }
-    async function copyText(text){
-      try{ await navigator.clipboard.writeText(text); setStatus(`Copied: ${text}`); }
+    };
+    const copyText = async (t)=> {
+      try{ await navigator.clipboard.writeText(t); setStatus(`Copied: ${t}`); }
       catch{ setStatus("Copy failed. Select & copy manually."); }
-    }
+    };
 
-    // ==== Firebase boot ====
+    // Firebase init
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db   = getDatabase(app);
 
     async function ensurePersistence(){
-      try{
-        await setPersistence(auth, browserLocalPersistence);
-        console.log("[auth] persistence = browserLocalPersistence");
-      }catch(err){
-        console.warn("[auth] browserLocalPersistence failed, falling back to inMemoryPersistence:", err?.message || err);
-        await setPersistence(auth, inMemoryPersistence);
-        console.log("[auth] persistence = inMemoryPersistence");
-      }
+      try{ await setPersistence(auth, browserLocalPersistence); }
+      catch{ await setPersistence(auth, inMemoryPersistence); }
     }
-
-    async function waitForAuth(timeoutMs = 8000){
+    async function waitForAuth(timeoutMs = 10000){
       await ensurePersistence();
-
       setStatus("Signing in anonymously…");
-      const started = Date.now();
 
-      // Kick sign-in
-      let signInErr = null;
-      await signInAnonymously(auth).catch(err=>{
-        signInErr = err;
-        console.error("[auth] signInAnonymously error:", err);
-      });
+      let signErr = null;
+      await signInAnonymously(auth).catch(e=> (signErr=e));
+      if (signErr) { setStatus("Auth failed: " + (signErr.message||signErr)); throw signErr; }
 
-      // If signInAnonymously failed immediately, surface it
-      if (signInErr){
-        setStatus("Auth failed: " + (signInErr?.message || signInErr));
-        throw signInErr;
-      }
-
-      // Wait for user via onAuthStateChanged with timeout fallback
-      const user = await new Promise((resolve, reject)=>{
-        let resolved = false;
-        const timer = setTimeout(()=>{
-          if (!resolved){
-            const msg = `Auth timeout after ${Date.now()-started}ms`;
-            console.warn("[auth]", msg);
-            reject(new Error(msg));
-          }
-        }, timeoutMs);
-
+      return await new Promise((resolve, reject)=>{
+        const t = setTimeout(()=> reject(new Error("Auth timeout")), timeoutMs);
         const off = onAuthStateChanged(auth, u=>{
-          if (u && !resolved){
-            resolved = true;
-            clearTimeout(timer);
-            off();
-            console.log("[auth] uid:", u.uid);
-            resolve(u);
-          }
-        }, err=>{
-          if (!resolved){
-            resolved = true;
-            clearTimeout(timer);
-            console.error("[auth] onAuthStateChanged error:", err);
-            reject(err);
-          }
-        });
+          if (u){ clearTimeout(t); off(); console.log("[auth] uid:", u.uid); resolve(u); }
+        }, err=>{ clearTimeout(t); reject(err); });
       });
-
-      return user;
     }
 
-    // === Create a room safely with your rules ===
-    async function createRoomCode(uid, maxTries=8){
+    // Reserve a room by setting createdAt (do NOT touch hostUid here)
+    async function reserveRoomCode(maxTries=8){
       setStatus("Creating room…");
-      for (let i=0;i<maxTries;i++){
+      for(let i=0;i<maxTries;i++){
         const code = genCode();
-        const hostRef = ref(db, `rooms/${code}/hostUid`);
         try{
-          const res = await runTransaction(hostRef, current => {
-            if (current === null) return uid; // claim if empty
-            return; // abort if already taken
-          }, {applyLocally:false});
-          if (res.committed && res.snapshot.val() === uid){
-            console.log("[create] claimed hostUid for", code);
-            try{
-              await set(ref(db, `rooms/${code}/createdAt`), Date.now());
-              console.log("[create] createdAt set");
-            }catch(err){
-              console.warn("[create] createdAt set denied (exists/race). OK.", err?.message || err);
-            }
-            return code;
-          }else{
-            console.log("[create] collision on", code, "retrying…");
-          }
+          await set(ref(db, `rooms/${code}/createdAt`), Date.now());
+          console.log("[reserve] createdAt set for", code);
+          return code;
         }catch(err){
-          console.warn("[create] transaction failed (rules/race). Retrying…", err?.message || err);
+          console.warn("[reserve] code collision or denied on", code, err?.message||err);
         }
       }
       throw new Error("Could not allocate a room code after several tries.");
@@ -199,29 +138,20 @@
 
     async function boot(){
       try{
-        const user = await waitForAuth(10000); // give it up to 10s in tricky browsers
-
+        await waitForAuth();
         const params = new URLSearchParams(location.search);
         const preset = (params.get("room") || "").toUpperCase();
-
         let code = preset;
+
         if (!code){
-          code = await createRoomCode(user.uid);
+          code = await reserveRoomCode();
         }else{
-          setStatus(`Trying to claim preset room ${code}…`);
+          // Try to reserve createdAt for preset; ignore if already exists
           try{
-            const res = await runTransaction(ref(db, `rooms/${code}/hostUid`), current => {
-              if (current === null) return user.uid;
-              return; // abort if someone already set it
-            }, {applyLocally:false});
-            if (res.committed){
-              console.log("[preset] claimed host for preset", code);
-              try{ await set(ref(db, `rooms/${code}/createdAt`), Date.now()); }catch{}
-            }else{
-              console.log("[preset] preset already owned; continuing without claim");
-            }
+            await set(ref(db, `rooms/${code}/createdAt`), Date.now());
+            console.log("[preset] createdAt set for preset", code);
           }catch(err){
-            console.warn("[preset] claim failed:", err?.message || err);
+            console.warn("[preset] createdAt already set or denied. Continuing.", err?.message||err);
           }
         }
 
@@ -230,20 +160,16 @@
       }catch(err){
         setStatus("Fatal error: " + (err?.message || err));
         console.error("[boot] fatal:", err);
-        // Helpful hints for common causes:
-        console.warn("[hint] Make sure you're serving over http(s) (not file://) and your host is in Firebase Auth → Authorized domains. Add localhost and 127.0.0.1 if needed.");
+        console.warn("[hint] Serve over http(s) and add your dev host to Firebase Auth → Authorized domains.");
       }
     }
 
-    // ==== UI events ====
     copyCodeBtn.addEventListener("click", ()=> copyText(codeEl.textContent.trim()));
     copyLinkBtn.addEventListener("click", ()=> copyText(openLink.href));
     regenBtn.addEventListener("click", async ()=>{
       setStatus("Regenerating room…");
       try{
-        const user = (await waitForAuth().catch(()=> null)) || auth.currentUser;
-        if(!user) throw new Error("Not signed in");
-        const code = await createRoomCode(user.uid);
+        const code = await reserveRoomCode();
         applyUI(code);
         setStatus(`Room ready: ${code}`);
       }catch(err){
@@ -251,7 +177,6 @@
       }
     });
 
-    // Start
     boot();
   </script>
 </body>
