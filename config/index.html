@@ -1,92 +1,116 @@
 <!doctype html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>CA(D)H — Config</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body{margin:0;background:#0b0e18;color:#e8ebff;font:16px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif}
-    main{max-width:680px;margin:40px auto;padding:20px;background:#121829;border:1px solid #223; border-radius:14px}
-    h1{margin:0 0 12px}
-    button{padding:10px 14px;border-radius:10px;border:0;background:linear-gradient(180deg,#6ea8ff,#8bdeff);color:#001;font-weight:800;cursor:pointer}
-    code{background:#0c1020;padding:2px 6px;border-radius:6px}
-    .row{display:flex;gap:10px;margin-top:10px}
-    input{flex:1;padding:10px;border-radius:10px;border:1px solid #233;background:#0b0e18;color:#e8ebff}
-    .log{white-space:pre-wrap;background:#0c1020;border:1px solid #233;padding:10px;border-radius:10px;margin-top:12px;height:200px;overflow:auto}
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Config: generate room</h1>
-    <p id="status">[status] Boot…</p>
-    <div class="row">
-      <input id="code" placeholder="Room code" />
-      <button id="gen">Generate 4-digit</button>
+  <head>
+    <meta charset="utf-8" />
+    <title>CA(D)H • Config</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;display:grid;place-items:center;min-height:100svh;background:#0b0b0c;color:#e7e7ea}
+      .card{width:min(560px,92vw);background:#151518;border:1px solid #222;padding:24px;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+      h1{margin:0 0 8px;font-weight:700}
+      p{opacity:.85}
+      button{all:unset;display:inline-grid;place-items:center;padding:12px 16px;background:#2b2b31;border:1px solid #3a3a42;border-radius:12px;cursor:pointer;font-weight:600;margin-top:12px}
+      button:hover{background:#33333a}
+      code{background:#1b1b20;border:1px solid #2a2a31;padding:2px 6px;border-radius:6px}
+      .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+      .muted{opacity:.7}
+      .ok{color:#7cf08a}
+      .err{color:#ff8a8a}
+      .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>CA(D)H — Room Config</h1>
+      <p class="muted">Create a fresh, numeric 4-digit room. This will also delete any existing rooms.</p>
+      <div class="row">
+        <button id="btn">Create New Room</button>
+        <span id="status" class="muted">Idle…</span>
+      </div>
+      <div id="out" style="margin-top:14px"></div>
     </div>
-    <div class="row">
-      <button id="create">Create room</button>
-      <button id="open">Open main page</button>
-    </div>
-    <div class="log" id="log"></div>
-  </main>
 
-  <script type="module">
-    const log = (...a)=>{ const el=document.getElementById('log'); el.textContent += a.join(' ') + "\n"; el.scrollTop = el.scrollHeight; console.log(...a); };
-    const status = (t)=> { document.getElementById('status').textContent = t; log(t); };
+    <script type="module">
+      console.log("CONFIG_BUILD", new Date().toISOString());
 
-    // Firebase
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+      import {
+        getDatabase, ref, get, set, remove
+      } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+      import {
+        getAuth, signInAnonymously, onAuthStateChanged
+      } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
-    status("CONFIG_BUILD " + new Date().toISOString().slice(0,16).replace('T',' ') + "Z");
-    const app = initializeApp({
-      apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
-      authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
-      databaseURL: "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com",
-      projectId: "olio-cardsagainsthumanity",
-      storageBucket: "olio-cardsagainsthumanity.firebasestorage.app",
-      messagingSenderId: "256442998757",
-      appId: "1:256442998757:web:ab26e55db0b5029879990c",
-    });
-    const db = getDatabase(app);
-    const auth = getAuth(app);
+      const firebaseConfig = {
+        apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
+        authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
+        projectId: "olio-cardsagainsthumanity",
+        storageBucket: "olio-cardsagainsthumanity.firebasestorage.app",
+        messagingSenderId: "256442998757",
+        appId: "1:256442998757:web:ab26e55db0b5029879990c",
+        databaseURL: "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com"
+      };
 
-    // Sign in ASAP
-    status("[status] Signing in anonymously…");
-    const ready = new Promise((res,rej)=>{
-      onAuthStateChanged(auth, (u)=>{ if(u){ log("[auth] uid", u.uid); res(u);} }, (e)=>rej(e));
-      signInAnonymously(auth).catch(e=>{ log("[auth] signIn error", e.message); rej(e); });
-    });
+      const app = initializeApp(firebaseConfig);
+      const db  = getDatabase(app);
+      const auth = getAuth(app);
 
-    // UI
-    const $ = (s)=> document.querySelector(s);
-    $("#gen").onclick = ()=>{
-      const code = Math.floor(1000 + Math.random()*9000).toString(36).toUpperCase().slice(0,4).padEnd(4,'X');
-      $("#code").value = code;
-      log("[gen] code =", code);
-    };
-    $("#open").onclick = ()=>{
-      const code = ($("#code").value||"").toUpperCase();
-      if(!code) return;
-      window.open(`../index.html?room=${code}`, "_blank");
-    };
-    $("#create").onclick = async ()=>{
-      const code = ($("#code").value||"").toUpperCase();
-      if(!code) return alert("Enter code");
-      const u = await ready;
-      status("[create] writing room nodes…");
-      try{
-        await set(ref(db, `rooms/${code}/hostUid`), u.uid);
-        await set(ref(db, `rooms/${code}/createdAt`), Date.now());
-        log("[create] OK. Open main page.");
-        localStorage.setItem("cadh-room", code);
-        localStorage.setItem("cadh-name", "Host");
-      }catch(e){
-        log("[create] FAILED", e.message);
-        alert("Create failed: "+e.message);
+      const $ = s => document.querySelector(s);
+      const btn = $("#btn");
+      const status = $("#status");
+      const out = $("#out");
+
+      const setStatus = (html, cls="muted")=>{
+        status.className = cls;
+        status.innerHTML = html;
+        console.log("[status]", status.textContent || status.innerText);
       }
-    };
-  </script>
-</body>
+
+      const anonReady = new Promise((resolve, reject)=>{
+        onAuthStateChanged(auth, (user)=>{
+          if (user) { resolve(user); }
+        });
+        signInAnonymously(auth).catch(reject);
+      });
+
+      btn.addEventListener("click", async ()=>{
+        try {
+          setStatus("Signing in…");
+          const user = await anonReady;
+          setStatus("Signed in", "ok");
+          localStorage.setItem("cadh-host", "1");
+
+          // mark me as global host
+          await set(ref(db, `hosts/${user.uid}`), true);
+
+          // delete ALL existing rooms
+          setStatus("Deleting existing rooms…");
+          await remove(ref(db, "rooms"));
+
+          // generate a unique 4-digit numeric code
+          const genCode = ()=> (Math.floor(Math.random()*9000)+1000).toString();
+          let code = genCode();
+
+          // create room root
+          const now = Date.now();
+          const roomObj = {
+            code, createdAt: now, hostUid: user.uid, started: false
+          };
+          await set(ref(db, `rooms/${code}`), roomObj);
+
+          setStatus("Room created", "ok");
+          out.innerHTML = `
+            <div>Code: <code class="mono">${code}</code></div>
+            <div style="margin-top:10px">
+              <a class="ok" href="/?room=${code}">Open main page with this room</a>
+            </div>
+          `;
+          console.log("[config] Created room:", roomObj);
+        } catch (err) {
+          console.error("[config] FAILED", err);
+          setStatus("Error: " + (err?.message || err), "err");
+        }
+      });
+    </script>
+  </body>
 </html>
