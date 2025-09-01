@@ -13,12 +13,11 @@ const chatSend  = $("#chat-send");
 const uid = () => Math.random().toString(36).slice(2,10);
 const defaultName = () => localStorage.getItem("cadh-name") || `Player-${Math.floor(Math.random()*90+10)}`;
 
-/* init inputs */
 nameInput.value = defaultName();
 roomInput.value = localStorage.getItem("cadh-room") || "";
 
 let me = { id: uid(), name: nameInput.value, joinedAt: Date.now(), connected:false };
-let transport, store, ui, roomCode = "";
+let transport, store, ui;
 
 function bindUI(){
   chatSend.addEventListener("click", () => {
@@ -56,7 +55,6 @@ async function joinRoomFromInputs(forceCreate=false){
 async function bootRoom(code, forceCreate){
   if(transport) transport.destroy();
 
-  roomCode = code;
   transport = new Transport(code);
   store = createGameStore(transport);
 
@@ -73,7 +71,6 @@ async function bootRoom(code, forceCreate){
   setInterval(()=> store.actions.rename(me.id, nameInput.value.trim() || defaultName()), 4000);
 }
 
-/* Auto from URL */
 const params = new URLSearchParams(location.search);
 const urlRoom = params.get("room");
 if(urlRoom) roomInput.value = urlRoom.toUpperCase();
