@@ -22,7 +22,5 @@ signInAnonymously(auth).catch(console.error);
 
 // Promise to await auth
 export const authReady = new Promise((resolve) => {
-  onAuthStateChanged(auth, (user) => {
-    if (user) resolve(user);
-  });
+  onAuthStateChanged(auth, (user) => { if (user) resolve(user); });
 });
