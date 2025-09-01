@@ -17,7 +17,6 @@ export class UI{
     clearInterval(this.timerInterval);
   }
 
-  /* Render pipeline */
   render(s){
     this.renderPlayers(s);
     this.renderChat(s);
@@ -138,7 +137,6 @@ export class UI{
   }
 }
 
-/* helpers */
 function elCard(text){
   const el = document.createElement("div");
   el.className = "card";
