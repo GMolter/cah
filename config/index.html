@@ -44,11 +44,23 @@
   </div>
 
   <script type="module">
-    console.log("CONFIG_BUILD","2025-09-01T05:40Z");
+    console.log("CONFIG_BUILD","2025-09-01T05:55Z");
 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-    import { getDatabase, ref, set, runTransaction, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import {
+      getAuth,
+      signInAnonymously,
+      onAuthStateChanged,
+      setPersistence,
+      browserLocalPersistence,
+      inMemoryPersistence
+    } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+    import {
+      getDatabase,
+      ref,
+      set,
+      runTransaction
+    } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
     // ==== Firebase config (same project) ====
     const firebaseConfig = {
@@ -70,7 +82,7 @@
     const copyLinkBtn = $("#copy-link");
     const regenBtn = $("#regen");
 
-    const v = "6"; // cache-bust version for index.html
+    const v = "7"; // cache-bust version for index.html
     const genCode = () => Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
 
     function setStatus(msg){
@@ -93,52 +105,93 @@
     const auth = getAuth(app);
     const db   = getDatabase(app);
 
-    async function waitForAuth(){
+    async function ensurePersistence(){
+      try{
+        await setPersistence(auth, browserLocalPersistence);
+        console.log("[auth] persistence = browserLocalPersistence");
+      }catch(err){
+        console.warn("[auth] browserLocalPersistence failed, falling back to inMemoryPersistence:", err?.message || err);
+        await setPersistence(auth, inMemoryPersistence);
+        console.log("[auth] persistence = inMemoryPersistence");
+      }
+    }
+
+    async function waitForAuth(timeoutMs = 8000){
+      await ensurePersistence();
+
       setStatus("Signing in anonymously…");
+      const started = Date.now();
+
+      // Kick sign-in
+      let signInErr = null;
       await signInAnonymously(auth).catch(err=>{
-        console.error("[auth] signInAnonymously error", err);
-        setStatus("Auth failed: " + (err?.message || err));
-        throw err;
+        signInErr = err;
+        console.error("[auth] signInAnonymously error:", err);
       });
-      const user = await new Promise((resolve,reject)=>{
+
+      // If signInAnonymously failed immediately, surface it
+      if (signInErr){
+        setStatus("Auth failed: " + (signInErr?.message || signInErr));
+        throw signInErr;
+      }
+
+      // Wait for user via onAuthStateChanged with timeout fallback
+      const user = await new Promise((resolve, reject)=>{
+        let resolved = false;
+        const timer = setTimeout(()=>{
+          if (!resolved){
+            const msg = `Auth timeout after ${Date.now()-started}ms`;
+            console.warn("[auth]", msg);
+            reject(new Error(msg));
+          }
+        }, timeoutMs);
+
         const off = onAuthStateChanged(auth, u=>{
-          if(u){ console.log("[auth] uid", u.uid); off(); resolve(u); }
-        }, err=>{ console.error("[auth] onAuthStateChanged error", err); reject(err); });
+          if (u && !resolved){
+            resolved = true;
+            clearTimeout(timer);
+            off();
+            console.log("[auth] uid:", u.uid);
+            resolve(u);
+          }
+        }, err=>{
+          if (!resolved){
+            resolved = true;
+            clearTimeout(timer);
+            console.error("[auth] onAuthStateChanged error:", err);
+            reject(err);
+          }
+        });
       });
+
       return user;
     }
 
     // === Create a room safely with your rules ===
-    // Strategy:
-    // 1) Try to claim /rooms/{code}/hostUid via a transaction that only writes if empty.
-    // 2) If claim succeeds, set createdAt once (ignore error if some race wrote it first).
-    // No reads before writes (compatible with your rules).
     async function createRoomCode(uid, maxTries=8){
       setStatus("Creating room…");
       for (let i=0;i<maxTries;i++){
         const code = genCode();
         const hostRef = ref(db, `rooms/${code}/hostUid`);
         try{
-          // Transaction ensures we only write if hostUid is empty
           const res = await runTransaction(hostRef, current => {
-            if (current === null) return uid; // claim
-            return; // abort
+            if (current === null) return uid; // claim if empty
+            return; // abort if already taken
           }, {applyLocally:false});
           if (res.committed && res.snapshot.val() === uid){
             console.log("[create] claimed hostUid for", code);
-            // set createdAt if not set; rule allows only if doesn't exist
             try{
               await set(ref(db, `rooms/${code}/createdAt`), Date.now());
               console.log("[create] createdAt set");
             }catch(err){
-              console.warn("[create] createdAt set denied (likely exists or race). OK.", err?.message || err);
+              console.warn("[create] createdAt set denied (exists/race). OK.", err?.message || err);
             }
             return code;
           }else{
             console.log("[create] collision on", code, "retrying…");
           }
         }catch(err){
-          console.warn("[create] transaction failed (maybe rules or race). Retrying…", err?.message || err);
+          console.warn("[create] transaction failed (rules/race). Retrying…", err?.message || err);
         }
       }
       throw new Error("Could not allocate a room code after several tries.");
@@ -146,9 +199,8 @@
 
     async function boot(){
       try{
-        const user = await waitForAuth();
+        const user = await waitForAuth(10000); // give it up to 10s in tricky browsers
 
-        // Optional: allow ?room=PRESET to re-use a code (will still try to claim hostUid)
         const params = new URLSearchParams(location.search);
         const preset = (params.get("room") || "").toUpperCase();
 
@@ -156,7 +208,6 @@
         if (!code){
           code = await createRoomCode(user.uid);
         }else{
-          // Try to claim preset; if taken, we just link to it (host will be whoever owns it)
           setStatus(`Trying to claim preset room ${code}…`);
           try{
             const res = await runTransaction(ref(db, `rooms/${code}/hostUid`), current => {
@@ -178,20 +229,20 @@
         setStatus(`Room ready: ${code}\nShare the code or the link below.`);
       }catch(err){
         setStatus("Fatal error: " + (err?.message || err));
+        console.error("[boot] fatal:", err);
+        // Helpful hints for common causes:
+        console.warn("[hint] Make sure you're serving over http(s) (not file://) and your host is in Firebase Auth → Authorized domains. Add localhost and 127.0.0.1 if needed.");
       }
     }
 
     // ==== UI events ====
-    copyCodeBtn.addEventListener("click", ()=>{
-      copyText(codeEl.textContent.trim());
-    });
-    copyLinkBtn.addEventListener("click", ()=>{
-      copyText(openLink.href);
-    });
+    copyCodeBtn.addEventListener("click", ()=> copyText(codeEl.textContent.trim()));
+    copyLinkBtn.addEventListener("click", ()=> copyText(openLink.href));
     regenBtn.addEventListener("click", async ()=>{
       setStatus("Regenerating room…");
       try{
-        const user = auth.currentUser || await waitForAuth();
+        const user = (await waitForAuth().catch(()=> null)) || auth.currentUser;
+        if(!user) throw new Error("Not signed in");
         const code = await createRoomCode(user.uid);
         applyUI(code);
         setStatus(`Room ready: ${code}`);
