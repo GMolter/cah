@@ -1,10 +1,10 @@
 import { app, auth, db, authReady } from "./firebase.js";
-import { createHostDecks, computeNextJudgeId, ROUND_SECONDS, id, now } from "./game.js";
+import { createHostDecks, computeNextJudgeId, ROUND_SECONDS, id } from "./game.js";
 import { createStore } from "./tiny-store.js";
 import { UI } from "./ui.js";
 
 import {
-  ref, get, set, update, push, onValue, runTransaction, serverTimestamp, onDisconnect, remove
+  ref, get, set, update, onValue, onDisconnect, remove
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
 /* ---------- DOM ---------- */
@@ -58,22 +58,15 @@ async function joinRoom(code, desiredName){
 
   currentRoom = code;
 
-  const roomBase = ref(db, `rooms/${code}`);
-
-  // Try to set host if not set yet
-  const hostUidRef = ref(db, `rooms/${code}/hostUid`);
-  await runTransaction(hostUidRef, (cur)=> cur || my.uid);
-
-  const createdAtRef = ref(db, `rooms/${code}/createdAt`);
-  await runTransaction(createdAtRef, (cur)=> cur || Date.now());
-
-  // Add/update self in players
+  // 1) Add/refresh self as a player FIRST (makes us a member)
   const playerRef = ref(db, `rooms/${code}/players/${my.uid}`);
+  const existing = await get(playerRef);
+  const prevScore = existing.exists() ? (existing.val().score || 0) : 0;
   await update(playerRef, {
     name: my.name,
     joinedAt: Date.now(),
     connected: true,
-    score: (await get(playerRef)).exists() ? (await get(playerRef)).val().score || 0 : 0,
+    score: prevScore,
     submitted: false
   });
 
@@ -83,44 +76,45 @@ async function joinRoom(code, desiredName){
   onDisconnect(presenceRef).set(false);
   onDisconnect(playerRef).update({ connected:false });
 
+  // 2) Try to become host (first writer wins; rules allow if unset or already me)
+  const hostUidRef = ref(db, `rooms/${code}/hostUid`);
+  await set(hostUidRef, my.uid).catch(()=>{}); // ignore if someone else already set it
+
+  // 3) Set createdAt once (ignore if exists)
+  const createdAtRef = ref(db, `rooms/${code}/createdAt`);
+  await set(createdAtRef, Date.now()).catch(()=>{});
+
   // Subscribe to room data
   bindRoomSubscriptions(code);
 
-  // If I'm host, init decks (local only)
-  if (canIHost()){
+  // If I'm host, init local decks
+  if (canIHost()) {
     hostDecks = createHostDecks();
   }
 }
 
 function bindRoomSubscriptions(code){
-  // Host
   onValue(ref(db, `rooms/${code}/hostUid`), (snap)=>{
     store.patch({ hostUid: snap.val() || null });
-    // If I became host later, create decks
     if (canIHost() && !hostDecks) hostDecks = createHostDecks();
   });
 
-  // Started flag
   onValue(ref(db, `rooms/${code}/started`), (snap)=>{
     store.patch({ started: !!snap.val() });
   });
 
-  // Players
   onValue(ref(db, `rooms/${code}/players`), (snap)=>{
     store.patch({ players: snap.val() || {} });
   });
 
-  // Hands (whole object)
   onValue(ref(db, `rooms/${code}/hands`), (snap)=>{
     store.patch({ hands: snap.val() || {} });
   });
 
-  // Round
   onValue(ref(db, `rooms/${code}/round`), (snap)=>{
     store.patch({ round: snap.val() || { number:0, judgeUid:null, black:null, deadline:0, pickedSubmissionId:null } });
   });
 
-  // Submissions (convert map to array + id)
   onValue(ref(db, `rooms/${code}/submissions`), (snap)=>{
     const val = snap.val() || {};
     const arr = Object.entries(val).map(([k,v])=> ({ id:k, ...v }));
@@ -128,7 +122,6 @@ function bindRoomSubscriptions(code){
     store.patch({ submissions: arr });
   });
 
-  // Chat stream (array)
   onValue(ref(db, `rooms/${code}/chat`), (snap)=>{
     const val = snap.val() || {};
     const arr = Object.values(val);
@@ -149,10 +142,12 @@ async function hostStartRound(){
 
   const nextJudge = computeNextJudgeId(s.players, s.round?.judgeUid || null);
   const black = hostDecks.black.draw();
+
   // Reset submitted flags
-  for (const pid of playerIds){
-    await update(ref(db, `rooms/${currentRoom}/players/${pid}`), { submitted:false });
-  }
+  await Promise.all(playerIds.map(pid =>
+    update(ref(db, `rooms/${currentRoom}/players/${pid}`), { submitted:false })
+  ));
+
   // Deal (top up to 7)
   for (const pid of playerIds){
     const handSnap = await get(ref(db, `rooms/${currentRoom}/hands/${pid}`));
@@ -164,6 +159,7 @@ async function hostStartRound(){
       await set(ref(db, `rooms/${currentRoom}/hands/${pid}/${card.id}`), card);
     }
   }
+
   // Clear submissions
   await remove(ref(db, `rooms/${currentRoom}/submissions`));
 
@@ -177,7 +173,7 @@ async function hostStartRound(){
     pickedSubmissionId: null
   });
 
-  // Mark started (in case it wasn't)
+  // Mark started
   await set(ref(db, `rooms/${currentRoom}/started`), true);
 }
 
@@ -188,9 +184,13 @@ async function hostPickWinner(submissionId){
   const sub = subSnap.val();
   const winner = sub.by;
 
-  // increment score
-  const scoreRef = ref(db, `rooms/${currentRoom}/players/${winner}/score`);
-  await runTransaction(scoreRef, (cur)=> (cur || 0) + 1);
+  // increment score atomically (read-modify-write acceptable for demo)
+  const playerRef = ref(db, `rooms/${currentRoom}/players/${winner}`);
+  const pSnap = await get(playerRef);
+  if (pSnap.exists()){
+    const cur = pSnap.val().score || 0;
+    await update(playerRef, { score: cur + 1 });
+  }
 
   // set picked
   await update(ref(db, `rooms/${currentRoom}/round`), { pickedSubmissionId: submissionId });
@@ -202,9 +202,7 @@ async function hostPickWinner(submissionId){
 /* ---------- Player actions ---------- */
 async function sendChat(msg){
   if (!currentRoom || !msg.trim()) return;
-  const item = {
-    from: my.uid, name: my.name, text: msg.trim(), ts: Date.now()
-  };
+  const item = { from: my.uid, name: my.name, text: msg.trim(), ts: Date.now() };
   await set(ref(db, `rooms/${currentRoom}/chat/${id()}`), item);
 }
 
@@ -214,7 +212,6 @@ async function playCard(cardId){
   if (s.round?.judgeUid === my.uid) return; // judge cannot play
   if (s.players?.[my.uid]?.submitted) return;
 
-  // Get card from my hand
   const cardRef = ref(db, `rooms/${currentRoom}/hands/${my.uid}/${cardId}`);
   const snap = await get(cardRef);
   if (!snap.exists()) return;
@@ -223,9 +220,7 @@ async function playCard(cardId){
   // Submit
   const subId = id();
   await set(ref(db, `rooms/${currentRoom}/submissions/${subId}`), {
-    by: my.uid,
-    card,
-    createdAt: Date.now()
+    by: my.uid, card, createdAt: Date.now()
   });
 
   // Remove from hand & flag submitted
@@ -240,9 +235,7 @@ authReady.then(()=>{
   ui = new UI(store, {
     meId: auth.currentUser.uid,
     onPlayCard: playCard,
-    onJudgePick: (submissionId)=> {
-      if (canIHost()) hostPickWinner(submissionId);
-    },
+    onJudgePick: (submissionId)=> { if (canIHost()) hostPickWinner(submissionId); },
     onStartRound: hostStartRound,
     canStartRef
   });
