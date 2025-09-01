@@ -12,7 +12,7 @@
     button{padding:10px 14px;border-radius:10px;border:1px solid #2a2e39;background:#1a1d24;color:#fff;cursor:pointer}
     .primary{background:#4f8cff;border-color:transparent}
     .muted{color:#9aa1af;font-size:12px}
-    .log{white-space:pre-wrap;background:#0d0f14;border:1px solid #232733;border-radius:10px;padding:10px;height:160px;overflow:auto;margin-top:10px}
+    .log{white-space:pre-wrap;background:#0d0f14;border:1px solid #232733;border-radius:10px;padding:10px;height:180px;overflow:auto;margin-top:10px}
   </style>
 </head>
 <body>
@@ -23,7 +23,7 @@
       <button id="gen" class="primary">Generate</button>
     </div>
     <div class="row">
-      <button id="reserve" class="primary">Reserve Room</button>
+      <button id="reserve" class="primary">Reserve Room (and close others)</button>
       <button id="clear">Clear Local</button>
     </div>
     <p class="muted">After reserving, open <strong>index.html</strong>, enter the code, and Join.</p>
@@ -31,12 +31,12 @@
   </div>
 
   <script type="module">
-    const stamp = "CONFIG_BUILD 2025-09-01T06:05Z";
+    const stamp = "CONFIG_BUILD 2025-09-01T06:12Z";
     const log = (m)=>{ const el = document.getElementById("log"); el.textContent += m + "\n"; el.scrollTop = el.scrollHeight; console.log(m); };
     log(stamp);
 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import { getDatabase, ref, set, get, remove, child } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
     import { getAuth, setPersistence, browserLocalPersistence, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -63,7 +63,7 @@
             await signInAnonymously(auth);
             log("[status] Anonymous sign-in OK");
           }else{
-            log("[status] Already signed in");
+            log("[status] Already signed in as " + u.uid);
           }
           resolve(true);
         }catch(e){
@@ -80,27 +80,69 @@
     const clear = $("#clear");
 
     function fourDigit(){ return String(Math.floor(1000 + Math.random()*9000)); }
+
     gen.addEventListener("click", ()=>{
       roomInput.value = fourDigit();
       log("[gen] code = " + roomInput.value);
     });
 
+    async function cleanupOtherRooms(keepCode){
+      const uid = auth.currentUser.uid;
+      const idxRef = ref(db, `hostRooms/${uid}`);
+      try{
+        const snap = await get(idxRef);
+        if(!snap.exists()){ log("[cleanup] No other rooms to close."); return; }
+        const entries = Object.keys(snap.val() || {});
+        const others = entries.filter(c => c !== keepCode);
+        if(!others.length){ log("[cleanup] No other rooms to close."); return; }
+
+        log(`[cleanup] Closing ${others.length} room(s): ${others.join(", ")}`);
+        for (const code of others){
+          try{
+            await remove(ref(db, `rooms/${code}`)); // allowed because rooms/$code .write permits hostUid
+            await remove(ref(db, `hostRooms/${uid}/${code}`));
+            log(`[cleanup] Closed room ${code}`);
+          }catch(e){
+            log(`[cleanup][ERROR] Failed to close ${code}: ${e?.message||e}`);
+          }
+        }
+      }catch(e){
+        log("[cleanup][ERROR] Could not list host rooms: " + (e?.message||e));
+      }
+    }
+
     reserve.addEventListener("click", async ()=>{
       await authReady;
-      const code = (roomInput.value||"").trim();
-      if(!code){ roomInput.value = fourDigit(); }
-      const c = (roomInput.value).trim();
-      if(c.length !== 4){ log("[reserve] enter 4-digit code"); return; }
+      const code = (roomInput.value||"").trim() || fourDigit();
+      roomInput.value = code;
 
+      if(code.length !== 4){ log("[reserve] enter a 4-digit code"); return; }
+
+      const uid = auth.currentUser.uid;
       try{
-        await set(ref(db, `rooms/${c}/createdAt`), Date.now());
-        await set(ref(db, `rooms/${c}/hostUid`), auth.currentUser.uid);
-        localStorage.setItem("cadh-host","true");
-        localStorage.setItem("cadh-room",c);
-        log(`[reserve] Room ${c} reserved. hostUid=${auth.currentUser.uid}`);
+        await set(ref(db, `rooms/${code}/createdAt`), Date.now());
       }catch(e){
-        log("[ERROR] reserve failed: " + (e?.message||e));
+        log("[reserve] createdAt write (may already exist): " + (e?.message||e));
       }
+      try{
+        await set(ref(db, `rooms/${code}/hostUid`), uid);
+      }catch(e){
+        log("[reserve] hostUid write (may already exist): " + (e?.message||e));
+      }
+      try{
+        await set(ref(db, `hostRooms/${uid}/${code}`), true);
+      }catch(e){
+        log("[reserve] hostRooms index write failed: " + (e?.message||e));
+      }
+
+      // mark me host locally
+      localStorage.setItem("cadh-host","true");
+      localStorage.setItem("cadh-room",code);
+      localStorage.setItem("cadh-autojoin","true");
+
+      log(`[reserve] Room ${code} reserved for host ${uid}.`);
+      await cleanupOtherRooms(code);
+      log("[done] Ready. Open main app with this code.");
     });
 
     clear.addEventListener("click", ()=>{
