@@ -3,7 +3,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
-// Your config (with databaseURL added)
 export const firebaseConfig = {
   apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
   authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
@@ -21,7 +20,7 @@ export const db = getDatabase(app);
 // Sign in anonymously immediately
 signInAnonymously(auth).catch(console.error);
 
-// Expose a ready promise for app.js to wait on
+// Promise to await auth
 export const authReady = new Promise((resolve) => {
   onAuthStateChanged(auth, (user) => {
     if (user) resolve(user);
