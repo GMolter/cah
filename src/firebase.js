@@ -1,9 +1,19 @@
-// Firebase init + exports (Anonymous Auth + RTDB)
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-import { getDatabase } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+// firebase.js
+export const BUILD = "FIREBASE_BUILD 2025-09-01T06:05Z";
 
-export const firebaseConfig = {
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import {
+  getDatabase
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+import {
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+  signInAnonymously,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+
+const firebaseConfig = {
   apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
   authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
   projectId: "olio-cardsagainsthumanity",
@@ -14,13 +24,23 @@ export const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
+export const db  = getDatabase(app);
 export const auth = getAuth(app);
-export const db = getDatabase(app);
 
-// Sign in anonymously immediately
-signInAnonymously(auth).catch(console.error);
+// Ensure we persist across refresh (and auto-resume)
+await setPersistence(auth, browserLocalPersistence);
 
-// Promise to await auth
-export const authReady = new Promise((resolve) => {
-  onAuthStateChanged(auth, (user) => { if (user) resolve(user); });
+const _ready = new Promise((resolve, reject) => {
+  onAuthStateChanged(auth, async (u) => {
+    try{
+      if(!u) await signInAnonymously(auth);
+      resolve(true);
+    }catch(e){
+      console.error("[firebase] signInAnonymously failed", e);
+      reject(e);
+    }
+  }, (err)=> reject(err));
 });
+
+export const authReady = _ready;
+console.log(BUILD);
