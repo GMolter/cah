@@ -2,66 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>CA(D)H – Config</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{ --bg:#0e0e10; --panel:#17171b; --text:#f5f6f8; --accent:#8b5cf6; --accent2:#22d3ee; --shadow:0 10px 30px rgba(0,0,0,.35) }
-    html,body{height:100%}
-    body{margin:0; background:var(--bg); color:var(--text); font:500 16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Inter,sans-serif; display:grid; place-items:center}
-    .card{width:min(620px,92%); background:linear-gradient(165deg,#121217,#0c0c10);
-      border:1px solid #272733; border-radius:16px; padding:18px; box-shadow:var(--shadow)}
-    h1{margin:0 0 6px 0; font-size:1.35rem}
-    .muted{opacity:.78; margin:2px 0 12px}
-    .row{display:flex; gap:8px; align-items:center; margin:10px 0; flex-wrap:wrap}
-    .code{font-weight:800; font-size:1.6rem; letter-spacing:.18rem; background:#0e0e14; border:1px solid #2a2a36; padding:10px 14px; border-radius:12px}
-    .btn{cursor:pointer; border:0; border-radius:12px; padding:10px 14px; color:white; background:linear-gradient(135deg,var(--accent),var(--accent2)); box-shadow:var(--shadow)}
-    .btn.ghost{background:#1a1b22; border:1px solid #2b2c37}
-    .link{display:inline-block; margin-top:10px; text-decoration:none; color:white; font-weight:700}
-    .small{font-size:.92rem}
-    .status{margin-top:12px; opacity:.92; white-space:pre-wrap}
-    .grid{display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center}
-    @media (max-width:520px){ .grid{grid-template-columns:1fr 1fr} .hide-sm{display:none} }
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    body{margin:0;font-family:system-ui,Segoe UI,Inter,Roboto,Arial,sans-serif;background:#0f1115;color:#e6e8ee;display:grid;place-items:center;height:100svh}
+    .card{width:min(520px,92vw);background:#111319;border:1px solid #252936;border-radius:14px;padding:16px}
+    .row{display:flex;gap:8px;margin:10px 0}
+    input{flex:1;padding:10px;border-radius:10px;border:1px solid #2a2e39;background:#12141a;color:#fff}
+    button{padding:10px 14px;border-radius:10px;border:1px solid #2a2e39;background:#1a1d24;color:#fff;cursor:pointer}
+    .primary{background:#4f8cff;border-color:transparent}
+    .muted{color:#9aa1af;font-size:12px}
+    .log{white-space:pre-wrap;background:#0d0f14;border:1px solid #232733;border-radius:10px;padding:10px;height:160px;overflow:auto;margin-top:10px}
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Create a Room Code</h1>
-    <div class="muted small">This page signs in anonymously and reserves a room code by setting <span class="mono">/rooms/{CODE}/createdAt</span>. It does <b>not</b> set a host.</div>
-
-    <div class="grid">
-      <div id="room-code" class="code">••••••</div>
-      <button id="copy-code" class="btn">Copy code</button>
-      <button id="regen" class="btn ghost hide-sm" title="Try a different code">Regenerate</button>
-    </div>
-
+    <h2>Config: Generate Room</h2>
     <div class="row">
-      <a id="open-link" class="link" href="#">Open room in game →</a>
-      <button id="copy-link" class="btn ghost">Copy link</button>
+      <input id="room-input" placeholder="4-digit code (auto)" />
+      <button id="gen" class="primary">Generate</button>
     </div>
-
-    <div id="status" class="status small">Booting…</div>
+    <div class="row">
+      <button id="reserve" class="primary">Reserve Room</button>
+      <button id="clear">Clear Local</button>
+    </div>
+    <p class="muted">After reserving, open <strong>index.html</strong>, enter the code, and Join.</p>
+    <div id="log" class="log"></div>
   </div>
 
   <script type="module">
-    console.log("CONFIG_BUILD","2025-09-01T06:05Z");
+    const stamp = "CONFIG_BUILD 2025-09-01T06:05Z";
+    const log = (m)=>{ const el = document.getElementById("log"); el.textContent += m + "\n"; el.scrollTop = el.scrollHeight; console.log(m); };
+    log(stamp);
 
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-    import {
-      getAuth,
-      signInAnonymously,
-      onAuthStateChanged,
-      setPersistence,
-      browserLocalPersistence,
-      inMemoryPersistence
-    } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-    import {
-      getDatabase,
-      ref,
-      set
-    } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import { getAuth, setPersistence, browserLocalPersistence, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
-    // Firebase config
     const firebaseConfig = {
       apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
       authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
@@ -72,112 +49,70 @@
       databaseURL: "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com"
     };
 
-    // UI helpers
-    const $ = (s)=> document.querySelector(s);
-    const codeEl = $("#room-code");
-    const statusEl = $("#status");
-    const openLink = $("#open-link");
-    const copyCodeBtn = $("#copy-code");
-    const copyLinkBtn = $("#copy-link");
-    const regenBtn = $("#regen");
-
-    const v = "8"; // cache-bust for index.html
-    const genCode = () => Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
-    const setStatus = (m)=>{ console.log("[status]", m); statusEl.textContent = m; };
-    const applyUI = (code)=> {
-      codeEl.textContent = code;
-      const url = `../index.html?room=${encodeURIComponent(code)}&v=${v}`;
-      openLink.href = url;
-      openLink.textContent = `Open room ${code} in game →`;
-    };
-    const copyText = async (t)=> {
-      try{ await navigator.clipboard.writeText(t); setStatus(`Copied: ${t}`); }
-      catch{ setStatus("Copy failed. Select & copy manually."); }
-    };
-
-    // Firebase init
     const app = initializeApp(firebaseConfig);
+    const db  = getDatabase(app);
     const auth = getAuth(app);
-    const db   = getDatabase(app);
 
-    async function ensurePersistence(){
-      try{ await setPersistence(auth, browserLocalPersistence); }
-      catch{ await setPersistence(auth, inMemoryPersistence); }
-    }
-    async function waitForAuth(timeoutMs = 10000){
-      await ensurePersistence();
-      setStatus("Signing in anonymously…");
+    await setPersistence(auth, browserLocalPersistence);
 
-      let signErr = null;
-      await signInAnonymously(auth).catch(e=> (signErr=e));
-      if (signErr) { setStatus("Auth failed: " + (signErr.message||signErr)); throw signErr; }
-
-      return await new Promise((resolve, reject)=>{
-        const t = setTimeout(()=> reject(new Error("Auth timeout")), timeoutMs);
-        const off = onAuthStateChanged(auth, u=>{
-          if (u){ clearTimeout(t); off(); console.log("[auth] uid:", u.uid); resolve(u); }
-        }, err=>{ clearTimeout(t); reject(err); });
-      });
-    }
-
-    // Reserve a room by setting createdAt (do NOT touch hostUid here)
-    async function reserveRoomCode(maxTries=8){
-      setStatus("Creating room…");
-      for(let i=0;i<maxTries;i++){
-        const code = genCode();
+    const authReady = new Promise((resolve, reject)=>{
+      onAuthStateChanged(auth, async (u)=>{
         try{
-          await set(ref(db, `rooms/${code}/createdAt`), Date.now());
-          console.log("[reserve] createdAt set for", code);
-          return code;
-        }catch(err){
-          console.warn("[reserve] code collision or denied on", code, err?.message||err);
-        }
-      }
-      throw new Error("Could not allocate a room code after several tries.");
-    }
-
-    async function boot(){
-      try{
-        await waitForAuth();
-        const params = new URLSearchParams(location.search);
-        const preset = (params.get("room") || "").toUpperCase();
-        let code = preset;
-
-        if (!code){
-          code = await reserveRoomCode();
-        }else{
-          // Try to reserve createdAt for preset; ignore if already exists
-          try{
-            await set(ref(db, `rooms/${code}/createdAt`), Date.now());
-            console.log("[preset] createdAt set for preset", code);
-          }catch(err){
-            console.warn("[preset] createdAt already set or denied. Continuing.", err?.message||err);
+          if(!u){
+            log("[status] Signing in anonymously…");
+            await signInAnonymously(auth);
+            log("[status] Anonymous sign-in OK");
+          }else{
+            log("[status] Already signed in");
           }
+          resolve(true);
+        }catch(e){
+          log("[ERROR] signInAnonymously failed: " + (e?.message||e));
+          reject(e);
         }
+      }, (err)=>{ log("[ERROR] onAuthStateChanged: "+err); reject(err); });
+    });
 
-        applyUI(code);
-        setStatus(`Room ready: ${code}\nShare the code or the link below.`);
-      }catch(err){
-        setStatus("Fatal error: " + (err?.message || err));
-        console.error("[boot] fatal:", err);
-        console.warn("[hint] Serve over http(s) and add your dev host to Firebase Auth → Authorized domains.");
-      }
-    }
+    const $ = (s)=> document.querySelector(s);
+    const roomInput = $("#room-input");
+    const gen = $("#gen");
+    const reserve = $("#reserve");
+    const clear = $("#clear");
 
-    copyCodeBtn.addEventListener("click", ()=> copyText(codeEl.textContent.trim()));
-    copyLinkBtn.addEventListener("click", ()=> copyText(openLink.href));
-    regenBtn.addEventListener("click", async ()=>{
-      setStatus("Regenerating room…");
+    function fourDigit(){ return String(Math.floor(1000 + Math.random()*9000)); }
+    gen.addEventListener("click", ()=>{
+      roomInput.value = fourDigit();
+      log("[gen] code = " + roomInput.value);
+    });
+
+    reserve.addEventListener("click", async ()=>{
+      await authReady;
+      const code = (roomInput.value||"").trim();
+      if(!code){ roomInput.value = fourDigit(); }
+      const c = (roomInput.value).trim();
+      if(c.length !== 4){ log("[reserve] enter 4-digit code"); return; }
+
       try{
-        const code = await reserveRoomCode();
-        applyUI(code);
-        setStatus(`Room ready: ${code}`);
-      }catch(err){
-        setStatus("Failed to create room: " + (err?.message || err));
+        await set(ref(db, `rooms/${c}/createdAt`), Date.now());
+        await set(ref(db, `rooms/${c}/hostUid`), auth.currentUser.uid);
+        localStorage.setItem("cadh-host","true");
+        localStorage.setItem("cadh-room",c);
+        log(`[reserve] Room ${c} reserved. hostUid=${auth.currentUser.uid}`);
+      }catch(e){
+        log("[ERROR] reserve failed: " + (e?.message||e));
       }
     });
 
-    boot();
+    clear.addEventListener("click", ()=>{
+      localStorage.removeItem("cadh-host");
+      localStorage.removeItem("cadh-room");
+      localStorage.removeItem("cadh-name");
+      localStorage.removeItem("cadh-autojoin");
+      log("[local] cleared cadh-*");
+    });
+
+    // prefill
+    roomInput.value = localStorage.getItem("cadh-room") || fourDigit();
   </script>
 </body>
 </html>
