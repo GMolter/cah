@@ -19,8 +19,12 @@ const chatSend  = $("#chat-send");
 /* ---------- Local State & Store ---------- */
 const defaultName = ()=> localStorage.getItem("cadh-name") || `Player-${Math.floor(Math.random()*90+10)}`;
 
+// Prefill from localStorage or ?room
+const params = new URLSearchParams(location.search);
+const qsRoom = (params.get("room") || "").toUpperCase();
+
 nameInput.value = defaultName();
-roomInput.value = localStorage.getItem("cadh-room") || "";
+roomInput.value = qsRoom || localStorage.getItem("cadh-room") || "";
 
 const store = createStore({
   hostUid: null,
@@ -43,10 +47,6 @@ let hostDecks = null;
 let unsubs = [];
 
 /* ---------- Helpers ---------- */
-function generateRoomCode(){
-  // keep 6 chars for UX, but since we removed "create", this is for host-created rooms only
-  return Math.random().toString(36).replace(/[^a-z0-9]/g,"").slice(2,8).toUpperCase();
-}
 function canIHost(){
   return store.get().hostUid && store.get().hostUid === my.uid;
 }
@@ -69,27 +69,39 @@ async function joinRoom(code, desiredName){
 
   currentRoom = code;
 
-  // 1) Add/refresh self as a player FIRST (membership -> enables reads/writes elsewhere)
+  // 1) Add/refresh self as a player FIRST.
   const playerRef = ref(db, `rooms/${code}/players/${my.uid}`);
   const existing = await get(playerRef);
-  const prevScore = existing.exists() ? (existing.val().score || 0) : 0;
-  await update(playerRef, {
-    name: my.name,
-    joinedAt: Date.now(),
-    connected: true,
-    score: prevScore,
-    submitted: false
-  });
 
-  // Presence
+  if (!existing.exists()){
+    // Create with full shape ONCE to satisfy validation; then later we'll do partial updates.
+    await set(playerRef, {
+      name: my.name,
+      joinedAt: Date.now(),
+      connected: true,
+      score: 0,
+      submitted: false
+    });
+  } else {
+    const prev = existing.val();
+    await update(playerRef, {
+      name: my.name,
+      joinedAt: prev.joinedAt || Date.now(),
+      connected: true,
+      // keep existing score
+      submitted: false
+    });
+  }
+
+  // Presence (self-managed)
   const presenceRef = ref(db, `rooms/${code}/presence/${my.uid}`);
   await set(presenceRef, true);
   onDisconnect(presenceRef).set(false);
   onDisconnect(playerRef).update({ connected:false });
 
-  // 2) Try to become host (first writer wins; rules allow if unset or already me)
+  // 2) Try to become host (first writer wins; rule allows if unset or already me)
   const hostUidRef = ref(db, `rooms/${code}/hostUid`);
-  await set(hostUidRef, my.uid).catch(()=>{}); // ignore if already set to someone else
+  await set(hostUidRef, my.uid).catch(()=>{}); // ignore if someone else already set
 
   // 3) Set createdAt once (ignore if exists)
   const createdAtRef = ref(db, `rooms/${code}/createdAt`);
@@ -112,18 +124,15 @@ function bindRoomSubscriptions(code){
   unsubs.forEach(fn => fn && fn());
   unsubs = [];
 
-  // Small helper to wrap onValue with unsubs
   const listen = (path, cb) => {
     const r = ref(db, path);
     const off = onValue(r, cb);
-    // Firebase v9 onValue returns the unsubscribe function
     unsubs.push(off);
   };
 
   listen(`rooms/${code}/hostUid`, (snap)=>{
     const hostUid = snap.val() || null;
     store.patch({ hostUid });
-    // Watch host presence; if host leaves, end game
     attachHostPresenceWatcher(code, hostUid);
     if (canIHost() && !hostDecks) hostDecks = createHostDecks();
   });
@@ -160,9 +169,6 @@ function bindRoomSubscriptions(code){
 }
 
 function attachHostPresenceWatcher(code, hostUid){
-  // Remove previous host presence watcher (if any)
-  // We'll rely on existing unsubs clearing when re-bind happens.
-
   if (!hostUid) return;
 
   const hostPresenceRef = ref(db, `rooms/${code}/presence/${hostUid}`);
@@ -183,18 +189,14 @@ function attachHostPresenceWatcher(code, hostUid){
 /* ---------- End game (host left) ---------- */
 function endGame(message){
   alert(message || "Game ended.");
-  // detach listeners
   unsubs.forEach(fn=> fn && fn());
   unsubs = [];
-  // clear local storage
   clearLocal();
-  // reset UI state
   store.replace({
     hostUid: null, started:false, players:{}, hands:{},
     round:{ number:0, judgeUid:null, black:null, deadline:0, pickedSubmissionId:null },
     submissions:[], chat:[]
   });
-  // show join modal again
   showModal(true);
 }
 
@@ -272,8 +274,7 @@ async function hostPickWinner(submissionId){
 async function sendChat(msg){
   if (!currentRoom || !msg.trim()) return;
   const s = store.get();
-  // must be member
-  if (!s.players || !s.players[my.uid]) return;
+  if (!s.players || !s.players[my.uid]) return; // must be member
   const item = { from: my.uid, name: my.name, text: msg.trim(), ts: Date.now() };
   await set(ref(db, `rooms/${currentRoom}/chat/${id()}`), item);
 }
@@ -308,11 +309,6 @@ authReady.then(()=>{
     onJudgePick: (submissionId)=> { if (canIHost()) hostPickWinner(submissionId); },
     onStartRound: hostStartRound
   });
-
-  // If we have saved room/name and want to auto-rejoin, uncomment:
-  // const savedRoom = localStorage.getItem("cadh-room");
-  // const savedName = localStorage.getItem("cadh-name");
-  // if (savedRoom && savedName) joinRoom(savedRoom, savedName).catch(()=> showModal(true));
 });
 
 /* ---------- Modal events ---------- */
