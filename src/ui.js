@@ -6,13 +6,10 @@ export class UI{
     this.onJudgePick = onJudgePick;
 
     this.$ = (sel)=> document.querySelector(sel);
-    this.root = this.$("#app");
-
     this.unsub = store.subscribe( s => this.render(s) );
-    this.render(store.get());
-
-    // timer tick
     this.timerInterval = setInterval(()=> this.renderTimer(this.store.get()), 250);
+
+    this.render(store.get());
   }
 
   destroy(){
@@ -20,14 +17,14 @@ export class UI{
     clearInterval(this.timerInterval);
   }
 
-  /* ---------- Renderers ---------- */
-  render(state){
-    this.renderPlayers(state);
-    this.renderChat(state);
-    this.renderBlackCard(state);
-    this.renderSubmissions(state);
-    this.renderHand(state);
-    this.renderTimer(state);
+  /* Render pipeline */
+  render(s){
+    this.renderPlayers(s);
+    this.renderChat(s);
+    this.renderBlackCard(s);
+    this.renderSubmissions(s);
+    this.renderHand(s);
+    this.renderTimer(s);
   }
 
   renderPlayers(s){
@@ -36,8 +33,7 @@ export class UI{
     list.innerHTML = "";
     board.innerHTML = "";
 
-    const ids = Object.keys(s.players);
-    ids.sort();
+    const ids = Object.keys(s.players).sort();
     ids.forEach(pid=>{
       const p = s.players[pid];
       const li = document.createElement("li");
@@ -79,9 +75,9 @@ export class UI{
   }
 
   renderBlackCard(s){
-    const b = this.$("#black-text");
+    const text = this.$("#black-text");
     const jc = this.$("#judge-stack");
-    b.textContent = s.round.black ? s.round.black.text : "Waiting for round…";
+    text.textContent = s.round.black ? s.round.black.text : "Waiting for round…";
     if(s.round.judgeId){
       jc.title = `Judge: ${s.players[s.round.judgeId]?.name || "—"}`;
     }
@@ -114,7 +110,6 @@ export class UI{
     const hand = this.$("#hand");
     hand.innerHTML = "";
 
-    // Judge can't submit
     const canPlay = s.round.judgeId !== this.meId && !me?.submitted;
 
     me?.hand?.forEach(c=>{
@@ -143,7 +138,7 @@ export class UI{
   }
 }
 
-/* ---------- helpers ---------- */
+/* helpers */
 function elCard(text){
   const el = document.createElement("div");
   el.className = "card";
