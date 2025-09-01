@@ -1,17 +1,11 @@
-// firebase.js
-export const BUILD = "FIREBASE_BUILD 2025-09-01T06:05Z";
+// /src/firebase.js
+export const BUILD = "FIREBASE_BUILD 2025-09-01T06:20Z";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import {
-  getDatabase
-} from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
-import {
-  getAuth,
-  setPersistence,
-  browserLocalPersistence,
-  signInAnonymously,
-  onAuthStateChanged
+  getAuth, setPersistence, browserLocalPersistence, signInAnonymously, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
@@ -24,23 +18,29 @@ const firebaseConfig = {
 };
 
 export const app = initializeApp(firebaseConfig);
-export const db  = getDatabase(app);
 export const auth = getAuth(app);
+export const db = getDatabase(app);
 
-// Ensure we persist across refresh (and auto-resume)
+// Persist auth so a refresh doesn't drop you
 await setPersistence(auth, browserLocalPersistence);
 
-const _ready = new Promise((resolve, reject) => {
-  onAuthStateChanged(auth, async (u) => {
+export const authReady = new Promise((resolve, reject)=>{
+  let settled = false;
+  onAuthStateChanged(auth, async (u)=>{
     try{
-      if(!u) await signInAnonymously(auth);
-      resolve(true);
+      if(!u){
+        console.log("[auth] signing in anonymously…");
+        await signInAnonymously(auth);
+      }else{
+        console.log("[auth] signed in as", u.uid);
+      }
+      if(!settled){ settled = true; resolve(true); }
     }catch(e){
-      console.error("[firebase] signInAnonymously failed", e);
-      reject(e);
+      console.error("[auth] signInAnonymously failed", e);
+      if(!settled){ settled = true; reject(e); }
     }
-  }, (err)=> reject(err));
+  }, (err)=>{
+    console.error("[auth] onAuthStateChanged error", err);
+    if(!settled){ settled = true; reject(err); }
+  });
 });
-
-export const authReady = _ready;
-console.log(BUILD);
