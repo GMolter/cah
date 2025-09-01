@@ -1,45 +1,43 @@
-// /src/game.js
-export const GAME_BUILD = "GAME_BUILD 2025-09-01T06:20Z";
+// GAME_BUILD 2025-09-01T06:05Z
+console.log("GAME_BUILD 2025-09-01T06:05Z");
 
-export const ROUND_SECONDS = 45;
+export const ROUND_SECONDS = 60;
 export const id = ()=> Math.random().toString(36).slice(2,10);
 
-// demo decks
 const WHITE = [
-  "A mime having a stroke.",
-  "A PowerPoint about bullets.",
-  "Grandma’s browser history.",
-  "An unexpected item in the bagging area.",
-  "Bees? Bees.",
-  "Literally eating the rich.",
-  "A Bluetooth toaster that won’t pair.",
-  "Florida Man.",
-  "Unskippable ads.",
-  "The world’s okayest dad."
-].map((t,i)=> ({ id:`w${i}`, text:t }));
+  "A funny joke","My collection of rocks","A big explosion","Spaghetti",
+  "A cute puppy","Science","Cheese","Aliens","An oversized lollipop",
+  "A cartoon camel enjoying a popsicle","A very good boy"
+].map((t,i)=>({ id:"w"+i, text:t }));
 
 const BLACK = [
-  "Why can’t I sleep at night? ____.",
-  "I got 99 problems but ____ ain’t one.",
-  "Next on Netflix: ____.",
-  "What’s that smell? ____.",
-  "In the next Marvel movie, ____ will finally face ____."
-].map((t,i)=> ({ id:`b${i}`, text:t }));
+  "In the beginning, there was ____.",
+  "What did I bring back from Mexico?",
+  "Why is the floor sticky?"
+].map((t,i)=>({ id:"b"+i, text:t }));
 
-class Deck {
-  constructor(cards){ this.cards = [...cards]; this._reshuffle(); }
-  _reshuffle(){ for(let i=this.cards.length-1;i>0;i--){ const j=(Math.random()* (i+1))|0; [this.cards[i],this.cards[j]]=[this.cards[j],this.cards[i]]; } }
-  draw(){ return this.cards.shift() || null; }
+function makeDeck(cards){
+  let bag = cards.slice();
+  return {
+    draw(){
+      if (!bag.length) return null;
+      const idx = Math.floor(Math.random()*bag.length);
+      return bag.splice(idx,1)[0];
+    }
+  };
 }
-
 export function createHostDecks(){
-  return { white: new Deck(WHITE), black: new Deck(BLACK) };
+  return {
+    white: makeDeck(WHITE),
+    black: makeDeck(BLACK)
+  };
 }
 
-export function computeNextJudgeId(players, lastJudge){
-  const ids = Object.keys(players || {}).sort();
-  if(!ids.length) return null;
-  if(!lastJudge) return ids[0];
-  const i = ids.indexOf(lastJudge);
+export function computeNextJudgeId(players, prevJudge){
+  const ids = Object.keys(players||{});
+  ids.sort();
+  if (!ids.length) return null;
+  if (!prevJudge) return ids[0];
+  const i = Math.max(0, ids.indexOf(prevJudge));
   return ids[(i+1) % ids.length];
 }
