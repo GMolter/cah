@@ -1,3 +1,5 @@
+console.log("APP_JS_BUILD","2025-09-01T05:35Z");
+
 // /src/app.js  — fixed join flow (no pre-read), verbose debug logging
 import { app, auth, db, authReady } from "./firebase.js";
 import { createHostDecks, computeNextJudgeId, ROUND_SECONDS, id } from "./game.js";
