@@ -1,3 +1,4 @@
+// /src/app.js  — with verbose debug logging
 import { app, auth, db, authReady } from "./firebase.js";
 import { createHostDecks, computeNextJudgeId, ROUND_SECONDS, id } from "./game.js";
 import { createStore } from "./tiny-store.js";
@@ -48,74 +49,109 @@ let unsubs = [];
 
 /* ---------- Helpers ---------- */
 function canIHost(){
-  return store.get().hostUid && store.get().hostUid === my.uid;
+  const s = store.get();
+  const host = !!(s.hostUid && s.hostUid === my.uid);
+  console.log("[canIHost]", { me: my.uid, hostUid: s.hostUid, host });
+  return host;
 }
 function showModal(show){
   joinModal.style.display = show ? "flex" : "none";
+  console.log("[UI] join modal visible:", show);
 }
 function clearLocal(){
+  console.log("[localStorage] clearing cadh-* keys");
   localStorage.removeItem("cadh-name");
   localStorage.removeItem("cadh-room");
 }
 
 /* ---------- Firebase wiring ---------- */
 async function joinRoom(code, desiredName){
+  console.log("[joinRoom] Attempting join", { code, desiredName });
+
   await authReady;
   my.uid = auth.currentUser.uid;
   my.name = desiredName || defaultName();
+  console.log("[joinRoom] Auth ready", { uid: my.uid, name: my.name });
 
   localStorage.setItem("cadh-name", my.name);
   localStorage.setItem("cadh-room", code);
-
   currentRoom = code;
 
-  // 1) Add/refresh self as a player FIRST.
+  // 1) Add/refresh self as a player FIRST (membership enables reads/writes in most rules).
   const playerRef = ref(db, `rooms/${code}/players/${my.uid}`);
-  const existing = await get(playerRef);
+  try {
+    console.log("[joinRoom] Reading player node", playerRef.toString());
+    const existing = await get(playerRef);
+    console.log("[joinRoom] Existing player snapshot:", existing.exists() ? existing.val() : null);
 
-  if (!existing.exists()){
-    // Create with full shape ONCE to satisfy validation; then later we'll do partial updates.
-    await set(playerRef, {
-      name: my.name,
-      joinedAt: Date.now(),
-      connected: true,
-      score: 0,
-      submitted: false
-    });
-  } else {
-    const prev = existing.val();
-    await update(playerRef, {
-      name: my.name,
-      joinedAt: prev.joinedAt || Date.now(),
-      connected: true,
-      // keep existing score
-      submitted: false
-    });
+    if (!existing.exists()){
+      console.log("[joinRoom] Creating player node via set()");
+      await set(playerRef, {
+        name: my.name,
+        joinedAt: Date.now(),
+        connected: true,
+        score: 0,
+        submitted: false
+      });
+      console.log("[joinRoom] Player created OK");
+    } else {
+      console.log("[joinRoom] Updating player node via update()");
+      await update(playerRef, {
+        name: my.name,
+        connected: true,
+        submitted: false
+        // keep joinedAt & score from existing
+      });
+      console.log("[joinRoom] Player updated OK");
+    }
+  } catch (err) {
+    console.error("[joinRoom] ERROR writing players node:", err);
   }
 
-  // Presence (self-managed)
+  // 2) Presence (self-managed)
   const presenceRef = ref(db, `rooms/${code}/presence/${my.uid}`);
-  await set(presenceRef, true);
-  onDisconnect(presenceRef).set(false);
-  onDisconnect(playerRef).update({ connected:false });
+  try {
+    console.log("[joinRoom] Setting presence true", presenceRef.toString());
+    await set(presenceRef, true);
+    onDisconnect(presenceRef).set(false);
+    onDisconnect(playerRef).update({ connected:false });
+    console.log("[joinRoom] Presence set + onDisconnect registered");
+  } catch (err) {
+    console.error("[joinRoom] ERROR writing presence:", err);
+  }
 
-  // 2) Try to become host (first writer wins; rule allows if unset or already me)
+  // 3) Try to become host (first writer wins; rules allow if unset or already me)
   const hostUidRef = ref(db, `rooms/${code}/hostUid`);
-  await set(hostUidRef, my.uid).catch(()=>{}); // ignore if someone else already set
+  try {
+    console.log("[joinRoom] Attempting to set hostUid:", hostUidRef.toString(), "->", my.uid);
+    await set(hostUidRef, my.uid);
+    console.log("[joinRoom] Claimed hostUid successfully");
+  } catch (err) {
+    console.warn("[joinRoom] Could not set hostUid (likely taken):", err);
+  }
 
-  // 3) Set createdAt once (ignore if exists)
+  // 4) createdAt set-once
   const createdAtRef = ref(db, `rooms/${code}/createdAt`);
-  await set(createdAtRef, Date.now()).catch(()=>{});
+  try {
+    console.log("[joinRoom] Attempting to set createdAt:", createdAtRef.toString());
+    await set(createdAtRef, Date.now());
+    console.log("[joinRoom] createdAt set");
+  } catch (err) {
+    console.warn("[joinRoom] createdAt already exists / write blocked:", err);
+  }
 
-  // Subscribe to room data (and remember unsubs)
+  // 5) Subscribe to room data
+  console.log("[joinRoom] Binding subscriptions for room", code);
   bindRoomSubscriptions(code);
 
   // If I'm host, init local decks
   if (canIHost()) {
+    console.log("[joinRoom] I am HOST; initializing decks");
     hostDecks = createHostDecks();
+  } else {
+    console.log("[joinRoom] I am NOT host");
   }
 
-  // Hide modal once joined
   showModal(false);
 }
 
@@ -123,40 +159,55 @@ function bindRoomSubscriptions(code){
   // clear old unsubs
   unsubs.forEach(fn => fn && fn());
   unsubs = [];
+  console.log("[bindRoomSubscriptions] (re)binding listeners for room", code);
 
   const listen = (path, cb) => {
     const r = ref(db, path);
-    const off = onValue(r, cb);
+    console.log("[listen] onValue ->", r.toString());
+    const off = onValue(r, cb, (err)=> console.error("[listen] onValue ERROR", r.toString(), err));
     unsubs.push(off);
   };
 
   listen(`rooms/${code}/hostUid`, (snap)=>{
     const hostUid = snap.val() || null;
+    console.log("[sub] hostUid =", hostUid);
     store.patch({ hostUid });
     attachHostPresenceWatcher(code, hostUid);
-    if (canIHost() && !hostDecks) hostDecks = createHostDecks();
+    if (canIHost() && !hostDecks) {
+      console.log("[sub] became host; initializing decks");
+      hostDecks = createHostDecks();
+    }
   });
 
   listen(`rooms/${code}/started`, (snap)=>{
-    store.patch({ started: !!snap.val() });
+    const started = !!snap.val();
+    console.log("[sub] started =", started);
+    store.patch({ started });
   });
 
   listen(`rooms/${code}/players`, (snap)=>{
-    store.patch({ players: snap.val() || {} });
+    const players = snap.val() || {};
+    console.log("[sub] players =", players);
+    store.patch({ players });
   });
 
   listen(`rooms/${code}/hands`, (snap)=>{
-    store.patch({ hands: snap.val() || {} });
+    const hands = snap.val() || {};
+    console.log("[sub] hands keys =", Object.keys(hands));
+    store.patch({ hands });
   });
 
   listen(`rooms/${code}/round`, (snap)=>{
-    store.patch({ round: snap.val() || { number:0, judgeUid:null, black:null, deadline:0, pickedSubmissionId:null } });
+    const round = snap.val() || { number:0, judgeUid:null, black:null, deadline:0, pickedSubmissionId:null };
+    console.log("[sub] round =", round);
+    store.patch({ round });
   });
 
   listen(`rooms/${code}/submissions`, (snap)=>{
     const val = snap.val() || {};
     const arr = Object.entries(val).map(([k,v])=> ({ id:k, ...v }));
     arr.sort((a,b)=> (a.createdAt||0) - (b.createdAt||0));
+    console.log("[sub] submissions len =", arr.length);
     store.patch({ submissions: arr });
   });
 
@@ -164,31 +215,38 @@ function bindRoomSubscriptions(code){
     const val = snap.val() || {};
     const arr = Object.values(val);
     arr.sort((a,b)=> (a.ts||0) - (b.ts||0));
+    console.log("[sub] chat len =", arr.length);
     store.patch({ chat: arr });
   });
 }
 
 function attachHostPresenceWatcher(code, hostUid){
-  if (!hostUid) return;
+  if (!hostUid) {
+    console.log("[attachHostPresenceWatcher] no hostUid yet");
+    return;
+  }
+  console.log("[attachHostPresenceWatcher] hostUid =", hostUid);
 
   const hostPresenceRef = ref(db, `rooms/${code}/presence/${hostUid}`);
   const hostPlayerRef   = ref(db, `rooms/${code}/players/${hostUid}`);
 
   const off1 = onValue(hostPresenceRef, (snap)=>{
     const present = !!snap.val();
+    console.log("[hostPresence] present =", present);
     if (!present) endGame("Host left — game ended.");
-  });
+  }, (err)=> console.error("[hostPresence] ERROR", err));
   const off2 = onValue(hostPlayerRef, (snap)=>{
     const connected = snap.exists() ? !!snap.val().connected : false;
+    console.log("[hostPlayer] connected =", connected);
     if (!connected) endGame("Host left — game ended.");
-  });
+  }, (err)=> console.error("[hostPlayer] ERROR", err));
 
   unsubs.push(off1, off2);
 }
 
 /* ---------- End game (host left) ---------- */
 function endGame(message){
-  alert(message || "Game ended.");
+  console.warn("[endGame]", message);
   unsubs.forEach(fn=> fn && fn());
   unsubs = [];
   clearLocal();
@@ -202,107 +260,168 @@ function endGame(message){
 
 /* ---------- Host actions ---------- */
 async function hostStartRound(){
-  if (!canIHost()) return;
+  console.log("[hostStartRound] invoked");
+  if (!canIHost()) { console.warn("[hostStartRound] not host; abort"); return; }
   const s = store.get();
   const playerIds = Object.keys(s.players||{});
+  console.log("[hostStartRound] playerIds =", playerIds);
   if (playerIds.length < 3){
     alert("Need at least 3 players to start.");
+    console.warn("[hostStartRound] <3 players; abort");
     return;
   }
-  if (!hostDecks) hostDecks = createHostDecks();
+  if (!hostDecks) {
+    console.log("[hostStartRound] creating decks");
+    hostDecks = createHostDecks();
+  }
 
   const nextJudge = computeNextJudgeId(s.players, s.round?.judgeUid || null);
   const black = hostDecks.black.draw();
+  console.log("[hostStartRound] nextJudge =", nextJudge, "black =", black);
 
   // Reset submitted flags
-  await Promise.all(playerIds.map(pid =>
-    update(ref(db, `rooms/${currentRoom}/players/${pid}`), { submitted:false })
-  ));
+  try {
+    await Promise.all(playerIds.map(pid =>
+      update(ref(db, `rooms/${currentRoom}/players/${pid}`), { submitted:false })
+        .then(()=> console.log("[hostStartRound] reset submitted for", pid))
+        .catch(err=> console.error("[hostStartRound] reset submitted FAILED for", pid, err))
+    ));
+  } catch(e) {
+    console.error("[hostStartRound] error resetting submitted flags:", e);
+  }
 
   // Deal (top up to 7)
   for (const pid of playerIds){
-    const handSnap = await get(ref(db, `rooms/${currentRoom}/hands/${pid}`));
-    const hand = handSnap.exists() ? handSnap.val() : {};
-    const count = Object.keys(hand).length;
-    for (let i=count; i<7; i++){
-      const card = hostDecks.white.draw();
-      if (!card) break;
-      await set(ref(db, `rooms/${currentRoom}/hands/${pid}/${card.id}`), card);
+    try {
+      const handRef = ref(db, `rooms/${currentRoom}/hands/${pid}`);
+      const handSnap = await get(handRef);
+      const hand = handSnap.exists() ? handSnap.val() : {};
+      const count = Object.keys(hand).length;
+      console.log("[hostStartRound] dealing to", pid, "current:", count);
+      for (let i=count; i<7; i++){
+        const card = hostDecks.white.draw();
+        if (!card) { console.warn("[hostStartRound] out of white cards"); break; }
+        await set(ref(db, `rooms/${currentRoom}/hands/${pid}/${card.id}`), card);
+        console.log("[hostStartRound] dealt", card.id, "to", pid);
+      }
+    } catch(err) {
+      console.error("[hostStartRound] DEAL FAILED for", pid, err);
     }
   }
 
   // Clear submissions
-  await remove(ref(db, `rooms/${currentRoom}/submissions`));
+  try {
+    await remove(ref(db, `rooms/${currentRoom}/submissions`));
+    console.log("[hostStartRound] cleared submissions");
+  } catch(err) {
+    console.error("[hostStartRound] clear submissions FAILED", err);
+  }
 
   // Write round
   const deadline = Date.now() + ROUND_SECONDS*1000;
-  await set(ref(db, `rooms/${currentRoom}/round`), {
-    number: (s.round?.number || 0) + 1,
-    judgeUid: nextJudge,
-    black,
-    deadline,
-    pickedSubmissionId: null
-  });
+  try {
+    await set(ref(db, `rooms/${currentRoom}/round`), {
+      number: (s.round?.number || 0) + 1,
+      judgeUid: nextJudge,
+      black,
+      deadline,
+      pickedSubmissionId: null
+    });
+    console.log("[hostStartRound] wrote round", { number: (s.round?.number || 0) + 1, judgeUid: nextJudge, deadline });
+  } catch(err) {
+    console.error("[hostStartRound] write round FAILED", err);
+  }
 
   // Mark started
-  await set(ref(db, `rooms/${currentRoom}/started`), true);
+  try {
+    await set(ref(db, `rooms/${currentRoom}/started`), true);
+    console.log("[hostStartRound] set started = true");
+  } catch(err) {
+    console.error("[hostStartRound] set started FAILED", err);
+  }
 }
 
 async function hostPickWinner(submissionId){
-  if (!canIHost()) return;
-  const subSnap = await get(ref(db, `rooms/${currentRoom}/submissions/${submissionId}`));
-  if (!subSnap.exists()) return;
-  const sub = subSnap.val();
-  const winner = sub.by;
+  console.log("[hostPickWinner] invoked for", submissionId);
+  if (!canIHost()) { console.warn("[hostPickWinner] not host; abort"); return; }
+  try {
+    const subRef = ref(db, `rooms/${currentRoom}/submissions/${submissionId}`);
+    const subSnap = await get(subRef);
+    if (!subSnap.exists()) { console.warn("[hostPickWinner] submission missing"); return; }
+    const sub = subSnap.val();
+    const winner = sub.by;
+    console.log("[hostPickWinner] winner =", winner, sub);
 
-  // increment score
-  const playerRef = ref(db, `rooms/${currentRoom}/players/${winner}`);
-  const pSnap = await get(playerRef);
-  if (pSnap.exists()){
-    const cur = pSnap.val().score || 0;
-    await update(playerRef, { score: cur + 1 });
+    const playerRef = ref(db, `rooms/${currentRoom}/players/${winner}`);
+    const pSnap = await get(playerRef);
+    if (pSnap.exists()){
+      const cur = pSnap.val().score || 0;
+      await update(playerRef, { score: cur + 1 });
+      console.log("[hostPickWinner] incremented score to", cur + 1);
+    } else {
+      console.warn("[hostPickWinner] winner player node missing");
+    }
+
+    await update(ref(db, `rooms/${currentRoom}/round`), { pickedSubmissionId: submissionId });
+    console.log("[hostPickWinner] set pickedSubmissionId =", submissionId);
+
+    setTimeout(()=> hostStartRound(), 1500);
+  } catch(err) {
+    console.error("[hostPickWinner] FAILED", err);
   }
-
-  // set picked
-  await update(ref(db, `rooms/${currentRoom}/round`), { pickedSubmissionId: submissionId });
-
-  // small pause, then next round
-  setTimeout(()=> hostStartRound(), 1500);
 }
 
 /* ---------- Player actions ---------- */
 async function sendChat(msg){
-  if (!currentRoom || !msg.trim()) return;
+  console.log("[sendChat] sending", msg);
+  if (!currentRoom || !msg.trim()) { console.warn("[sendChat] no room or empty msg"); return; }
   const s = store.get();
-  if (!s.players || !s.players[my.uid]) return; // must be member
+  if (!s.players || !s.players[my.uid]) { console.warn("[sendChat] not a member yet; abort"); return; }
   const item = { from: my.uid, name: my.name, text: msg.trim(), ts: Date.now() };
-  await set(ref(db, `rooms/${currentRoom}/chat/${id()}`), item);
+  try {
+    const path = `rooms/${currentRoom}/chat/${id()}`;
+    console.log("[sendChat] set ->", path);
+    await set(ref(db, path), item);
+    console.log("[sendChat] OK");
+  } catch(err) {
+    console.error("[sendChat] FAILED", err);
+    throw err;
+  }
 }
 
 async function playCard(cardId){
+  console.log("[playCard] cardId", cardId);
   const s = store.get();
-  if (!currentRoom || !s.started) return;
-  if (s.round?.judgeUid === my.uid) return; // judge cannot play
-  if (s.players?.[my.uid]?.submitted) return;
+  if (!currentRoom || !s.started) { console.warn("[playCard] no room or not started"); return; }
+  if (s.round?.judgeUid === my.uid) { console.warn("[playCard] I am judge; cannot play"); return; }
+  if (s.players?.[my.uid]?.submitted) { console.warn("[playCard] already submitted this round"); return; }
 
   const cardRef = ref(db, `rooms/${currentRoom}/hands/${my.uid}/${cardId}`);
-  const snap = await get(cardRef);
-  if (!snap.exists()) return;
-  const card = snap.val();
+  try {
+    const snap = await get(cardRef);
+    if (!snap.exists()) { console.warn("[playCard] card not in my hand"); return; }
+    const card = snap.val();
+    const subId = id();
 
-  // Submit
-  const subId = id();
-  await set(ref(db, `rooms/${currentRoom}/submissions/${subId}`), {
-    by: my.uid, card, createdAt: Date.now()
-  });
+    console.log("[playCard] submitting", subId, card);
+    await set(ref(db, `rooms/${currentRoom}/submissions/${subId}`), {
+      by: my.uid, card, createdAt: Date.now()
+    });
+    console.log("[playCard] submission OK");
 
-  // Remove from hand & flag submitted
-  await remove(cardRef);
-  await update(ref(db, `rooms/${currentRoom}/players/${my.uid}`), { submitted: true });
+    await remove(cardRef);
+    console.log("[playCard] removed card from hand");
+
+    await update(ref(db, `rooms/${currentRoom}/players/${my.uid}`), { submitted: true });
+    console.log("[playCard] flagged submitted = true");
+  } catch(err) {
+    console.error("[playCard] FAILED", err);
+  }
 }
 
 /* ---------- Wire UI ---------- */
 authReady.then(()=>{
+  console.log("[authReady] user =", auth.currentUser?.uid);
   ui = new UI(store, {
     meId: auth.currentUser.uid,
     onPlayCard: playCard,
@@ -315,8 +434,10 @@ authReady.then(()=>{
 joinBtn.addEventListener("click", ()=>{
   const code = (roomInput.value || "").trim().toUpperCase();
   const name = (nameInput.value || "").trim() || defaultName();
-  if(!code){ roomInput.focus(); return; }
+  console.log("[UI] Join clicked", { code, name });
+  if(!code){ roomInput.focus(); console.warn("[UI] empty code"); return; }
   joinRoom(code, name).catch(err=>{
+    console.error("[UI] joinRoom FAILED", err);
     alert("Could not join: " + (err?.message || err));
   });
 });
@@ -327,8 +448,12 @@ nameInput.addEventListener("keydown", e=>{ if(e.key==="Enter") joinBtn.click(); 
 /* ---------- Chat events ---------- */
 chatSend.addEventListener("click", ()=>{
   const msg = chatInput.value.trim();
+  console.log("[UI] Chat send clicked", msg);
   if(!msg) return;
-  sendChat(msg).catch(err=> alert("Chat failed: " + (err?.message || err)));
+  sendChat(msg).catch(err=> {
+    console.error("[UI] Chat failed", err);
+    alert("Chat failed: " + (err?.message || err));
+  });
   chatInput.value = "";
 });
 chatInput.addEventListener("keydown", e=>{
@@ -337,3 +462,4 @@ chatInput.addEventListener("keydown", e=>{
 
 /* ---------- Show modal on load ---------- */
 showModal(true);
+console.log("[boot] App loaded; waiting for user to join…");
