@@ -1,45 +1,42 @@
-// Host-side helpers: dealing, rotations, and default decks
-const ROUND_SECONDS = 60;
+// game.js
+export const GAME_BUILD = "GAME_BUILD 2025-09-01T06:05Z";
 
-const sampleBlack = [
-  "In the beginning, there was _____.",
-  "What did I bring back from Mexico?",
-  "______: kid-tested, mother-approved.",
-  "The secret ingredient is _____.",
-  "My superpower? _____."
-];
+export const ROUND_SECONDS = 45;
 
-const sampleWhite = [
-  "Spaghetti","A big explosion","A cute puppy","Science","Aliens","Cheese",
-  "My collection of rocks","An oversized lollipop","A cartoon camel enjoying a popsicle",
-  "A very good boy","Casey the Dog","Glitter","A mysterious briefcase","Unlimited breadsticks",
-  "An awkward silence","Jazz hands","Grandma's laptop","The last slice","Free samples"
-];
-
-const id  = () => Math.random().toString(36).slice(2,10);
-const now = () => Date.now();
-
-function makeDeck(list){
-  const cards = [...list].map((t,i)=>({ id:`c${i}-${id()}`, text:t }));
-  const draw = () => cards.splice(Math.floor(Math.random()*cards.length),1)[0];
-  const size = () => cards.length;
-  return { draw, size };
+export function id(){
+  // compact sortable-ish id
+  return Math.random().toString(36).slice(2, 10);
 }
+
+function makeDeck(cards){
+  const pool = cards.slice();
+  return {
+    draw(){
+      if(!pool.length) return null;
+      const idx = Math.floor(Math.random()*pool.length);
+      const [val] = pool.splice(idx,1);
+      return val;
+    }
+  };
+}
+
+// Minimal sample decks (replace with real packs later)
+const WHITE = Array.from({length: 400}, (_,i)=> ({ id: "w"+(i+1), text: "White card "+(i+1) }));
+const BLACK = Array.from({length: 80}, (_,i)=> ({ id: "b"+(i+1), text: "Black prompt "+(i+1) }));
 
 export function createHostDecks(){
-  return { black: makeDeck(sampleBlack), white: makeDeck(sampleWhite) };
+  return {
+    white: makeDeck(WHITE),
+    black: makeDeck(BLACK)
+  };
 }
 
-export function computeNextJudgeId(playerMap, currentJudgeId){
-  const ids = Object.keys(playerMap).sort((a,b)=>{
-    const ja = playerMap[a].joinedAt || 0;
-    const jb = playerMap[b].joinedAt || 0;
-    if (ja !== jb) return ja - jb;
-    return a.localeCompare(b);
-  });
+export function computeNextJudgeId(players, prev){
+  const ids = Object.keys(players||{}).sort(); // deterministic
   if (!ids.length) return null;
-  const idx = currentJudgeId ? Math.max(0, ids.indexOf(currentJudgeId)) : -1;
-  return ids[(idx + 1) % ids.length];
+  if (!prev) return ids[0];
+  const i = ids.indexOf(prev);
+  return ids[(i+1) % ids.length];
 }
 
-export { ROUND_SECONDS, id, now };
+console.log(GAME_BUILD);
