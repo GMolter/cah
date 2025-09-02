@@ -10,21 +10,28 @@
   <div id="app">
     <header class="topbar">
       <h1>Room 1</h1>
-      <button id="leaveBtn" class="outline small">Leave Room</button>
+      <button id="leaveBtn" class="danger">Leave Room</button>
     </header>
 
-    <section class="scoreboard card">
-      <h2>Players (<span id="playerCount">0</span>/8)</h2>
-      <ul id="playerList"></ul>
-    </section>
+    <main class="grid">
+      <!-- Chat (top-left) -->
+      <section class="chat card">
+        <h2>Chat</h2>
+        <div id="chatLog"></div>
+        <form id="chatForm">
+          <input id="chatInput" type="text" maxlength="300" placeholder="Type a message…" autocomplete="off">
+          <button type="submit">Send</button>
+        </form>
+      </section>
 
-    <section class="chat card">
-      <div id="chatLog"></div>
-      <form id="chatForm">
-        <input id="chatInput" type="text" maxlength="300" placeholder="Type a message…" autocomplete="off">
-        <button type="submit">Send</button>
-      </form>
-    </section>
+      <!-- Scoreboard (top-right) -->
+      <section class="scoreboard card">
+        <div class="head">
+          <h2>Players (<span id="playerCount">0</span>/8)</h2>
+        </div>
+        <ul id="playerList"></ul>
+      </section>
+    </main>
   </div>
 
   <script type="module" src="./app.js"></script>
