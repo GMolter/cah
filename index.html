@@ -4,86 +4,44 @@
     <meta charset="utf-8" />
     <title>CA(D)H</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <!-- Top bar -->
-    <header class="topbar">
-      <div class="brand">Cards Against (Digital) Humanity</div>
-      <div class="room-badge">
-        Room: <span id="room-code">—</span>
-      </div>
+    <header class="site-header">
+      <h1>Cards Against (Digital) Humanity</h1>
+      <div class="room-badge" id="room-badge" style="display:none;"></div>
     </header>
 
-    <!-- Main layout -->
-    <main class="layout">
-      <!-- LEFT: judge/black card / submissions / controls -->
-      <section class="left">
-        <div class="panel">
-          <h2>Round</h2>
-          <div id="round-black" class="black-card">Waiting for host…</div>
-          <div id="round-meta" class="muted"></div>
-          <div id="start-controls" class="controls hidden">
-            <button id="start-round">Start Round</button>
-          </div>
-        </div>
-
-        <div class="panel">
-          <h2>Submissions</h2>
-          <div id="submissions" class="submissions"></div>
-        </div>
-      </section>
-
-      <!-- RIGHT: players, hand, chat -->
-      <section class="right">
-        <div class="panel">
-          <h2>Players</h2>
-          <div id="players" class="players"></div>
-        </div>
-
-        <div class="panel">
-          <h2>Your Hand</h2>
-          <div id="hand" class="hand"></div>
-        </div>
-
-        <div class="panel">
-          <h2>Chat</h2>
-          <div id="chat-log" class="chat-log"></div>
-          <div class="chat-input-row">
-            <input id="chat-input" type="text" placeholder="Type message…" />
-            <button id="chat-send">Send</button>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <!-- Join modal -->
+    <!-- Join Modal -->
     <div id="join-modal" class="modal">
       <div class="modal-card">
-        <h3>Join a Room</h3>
-        <div class="row">
-          <label>Username</label>
-          <input id="name-input" type="text" />
+        <h2>Join a Room</h2>
+        <label class="field">
+          <span>Username</span>
+          <input id="name-input" type="text" placeholder="Your name" maxlength="24">
+        </label>
+        <label class="field">
+          <span>Room Code (4 digits)</span>
+          <input id="room-input" type="text" inputmode="numeric" pattern="[0-9]{4}" placeholder="1234" maxlength="4">
+        </label>
+        <div class="actions">
+          <button id="join-btn" class="btn-primary">Join</button>
         </div>
-        <div class="row">
-          <label>Room Code (4 digits)</label>
-          <input id="room-input" type="text" inputmode="numeric" maxlength="4" />
-        </div>
-        <div class="row actions">
-          <button id="join-btn">Join</button>
-        </div>
-        <div id="join-hint" class="muted small">
-          Ask the host to create a room on the config page.
-        </div>
+        <p class="hint">Tip: The host creates a 4-digit room on the <code>/config</code> page.</p>
       </div>
     </div>
 
-    <!-- Scripts -->
-    <script type="module" src="./src/firebase.js"></script>
-    <script type="module" src="./src/game.js"></script>
-    <script type="module" src="./src/tiny-store.js"></script>
-    <script type="module" src="./src/ui.js"></script>
-    <script type="module" src="./src/app.js"></script>
+    <!-- Main App Area -->
+    <main id="app" class="app-shell">
+      <!-- Populated by UI render -->
+    </main>
+
+    <!-- Scripts (order matters) -->
+    <script type="module" src="./firebase.js"></script>
+    <script type="module" src="./game.js"></script>
+    <script type="module" src="./tiny-store.js"></script>
+    <script type="module" src="./ui.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
