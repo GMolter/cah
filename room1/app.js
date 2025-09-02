@@ -13,60 +13,75 @@ let me=null, hb=null;
 /* Auth */
 onAuthStateChanged(auth, async u=>{
   if(!u){ location.href="../"; return; }
-  me=u; await safeJoin(); watchPlayers(); watchChat(); startHeartbeat();
+  me=u;
+  await safeJoin();
+  watchPlayers();
+  watchChat();
+  startHeartbeat();
 });
 
-/* Join logic with 45s restore + transactional count */
+/* Join logic: preserve within 45s, otherwise new join; count via transaction */
 async function safeJoin(){
   const uid=me.uid, prof=(await get(ref(db,`profiles/${uid}`))).val()||{};
-  const pRef=ref(db,`rooms/${ROOM}/players/${uid}`); const now=Date.now();
+  const pRef=ref(db,`rooms/${ROOM}/players/${uid}`);
+  const now=Date.now();
   const existing=(await get(pRef)).val();
   let isNew=true, joinedAt=now;
-  if(existing){ if(now-(existing.lastSeen||0)<=45000){ isNew=false; joinedAt=existing.joinedAt||now; } }
-  await update(ref(db),{
-    [`rooms/${ROOM}/players/${uid}`]:{nickname:prof.nickname||prof.firstName||"User",photoURL:prof.photoURL||"../assets/default-avatar.png",joinedAt,lastSeen:now,status:"online"}
+  if(existing && now-(existing.lastSeen||0)<=45000){ isNew=false; joinedAt=existing.joinedAt||now; }
+
+  await update(pRef,{
+    nickname:prof.nickname||prof.firstName||"User",
+    photoURL:prof.photoURL||"../assets/default-avatar.png",
+    joinedAt,lastSeen:now,status:"online"
   });
+
   if(isNew){ await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>(c||0)+1); }
+
+  // Cleanly mark offline on disconnect (no remove to avoid flicker)
   onDisconnect(pRef).update({status:"offline",lastSeen:Date.now()});
-  sendSystem(isNew?"join":"message", isNew?"joined the room":`${prof.nickname||"User"} is back`);
+
+  // "System" message shaped as normal chat (type: 'message') to satisfy rules
+  sendSystem(isNew?`${displayNick(prof)} joined the room`:`${displayNick(prof)} reconnected`);
 }
 
-/* Leave (no sign-out) */
+/* Leave without signing out */
 $("#leaveBtn").onclick=async ()=>{
   if(!me) return;
-  const uid=me.uid; const pRef=ref(db,`rooms/${ROOM}/players/${uid}`);
+  const uid=me.uid, pRef=ref(db,`rooms/${ROOM}/players/${uid}`);
   await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>Math.max((c||1)-1,0));
   await set(pRef,null);
-  sendSystem("leave","left the room");
+  await sendSystem(`${me.displayName?.split(" ")[0]||"User"} left the room`);
   location.href="../";
 };
 
-/* Heartbeat updates lastSeen every 15s */
+/* Heartbeat */
 function startHeartbeat(){
   clearInterval(hb);
   hb=setInterval(()=>{ if(me){ update(ref(db,`rooms/${ROOM}/players/${me.uid}`),{lastSeen:Date.now(),status:"online"}); } },15000);
 }
 
-/* Scoreboard (sorted by joinedAt, duplicate names get one *) */
+/* Scoreboard (top-right), sorted by joinedAt, duplicate names suffix * */
 function watchPlayers(){
   onValue(ref(db,`rooms/${ROOM}/players`),snap=>{
-    const arr=[]; snap.forEach(ch=>arr.push(ch.val()));
+    const list=$("#playerList"); const arr=[];
+    snap.forEach(ch=>arr.push({...ch.val()}));
     arr.sort((a,b)=>(a.joinedAt||0)-(b.joinedAt||0));
     $("#playerCount").textContent=arr.length;
     const seen=new Set();
-    $("#playerList").innerHTML=arr.map(p=>{
-      const k=(p.nickname||"User").toLowerCase(); const name=seen.has(k)?(p.nickname+"*"):(seen.add(k),p.nickname);
+    list.innerHTML=arr.map(p=>{
+      const base=(p.nickname||"User"); const key=base.toLowerCase();
+      const name=seen.has(key)?`${base}*`:(seen.add(key),base);
       return `<li><img src="${p.photoURL}" alt=""><span>${name}</span></li>`;
     }).join("");
   });
 }
 
-/* Chat */
+/* Chat (top-left) */
 $("#chatForm").onsubmit=async e=>{
   e.preventDefault();
   const text=$("#chatInput").value.trim(); if(!text) return;
   const prof=(await get(ref(db,`profiles/${me.uid}`))).val()||{};
-  await push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:prof.nickname||"User",text, type:"message", ts:Date.now()});
+  await push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:displayNick(prof),text, type:"message", ts:Date.now()});
   $("#chatInput").value="";
 };
 function watchChat(){
@@ -74,13 +89,15 @@ function watchChat(){
     const log=$("#chatLog"); log.innerHTML="";
     snap.forEach(s=>{
       const m=s.val(); const div=document.createElement("div");
-      div.className="chat-msg "+(m.type==="message"?(m.uid===me.uid?"self":"other"):"system");
-      div.textContent=m.type==="message"?`${m.nickname}: ${m.text}`:`${m.nickname||"System"} ${m.text}`;
+      const isSys = m.sys === true || /joined the room|left the room|reconnected/.test(m.text||"");
+      div.className="chat-msg "+(isSys?"system":(m.uid===me.uid?"self":"other"));
+      div.textContent=isSys ? m.text : `${m.nickname}: ${m.text}`;
       log.appendChild(div);
     }); log.scrollTop=log.scrollHeight;
   });
 }
-function sendSystem(type,text){
-  const nick=me?.displayName?.split(" ")[0]||"User";
-  push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nick,text, type, ts:Date.now()});
+function sendSystem(text){
+  const nick = me?.displayName?.split(" ")[0] || "User";
+  return push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nick,text, type:"message", sys:true, ts:Date.now()});
 }
+function displayNick(prof){ return (prof.nickname||prof.firstName||"User"); }
