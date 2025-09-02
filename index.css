@@ -1,1 +1,19 @@
-
+/* Landing layout + CAH vibe */
+h1{font-size:28px;margin:0 0 6px;letter-spacing:.5px}
+h2{margin:0 0 10px}
+#emailForm{display:grid;gap:8px}
+.roomHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.codeLabel{display:block;margin:10px 0 14px;font-size:.9rem;color:#cfcfcf}
+.rooms{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.roomBtn{font-size:18px;padding:16px;border-radius:16px;background:#fff;color:#000}
+.roomBtn[data-room="room2"]{background:#000;color:#fff;border:1px solid #2a2a2a}
+#authCard,#nickCard,#roomsCard{animation:pop .18s ease}
+@keyframes pop{from{transform:scale(.98);opacity:.7}to{transform:scale(1);opacity:1}}
+/* subtle focus */
+input:focus,button:focus{outline:2px solid #2f2f2f;outline-offset:2px;border-color:#3a3a3a}
+/* tiny viewport polish */
+@media (max-width:420px){
+  .rooms{grid-template-columns:1fr}
+  h1{font-size:22px}
+  .roomBtn{padding:14px}
+}
