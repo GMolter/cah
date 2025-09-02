@@ -1,153 +1,202 @@
-// APP_JS_BUILD 2025-09-01T07:25Z
-import { authReady, db, ref, child, get, set, onValue, onDisconnect, push } from "./firebase.js";
-import { save, load, drop } from "./tiny-store.js";
-import { randomBlack } from "./game.js";
-import { showJoinModal, hideJoinModal, renderGameUI } from "./ui.js";
-
+/* APP_JS_BUILD */ 
 console.log("APP_JS_BUILD", new Date().toISOString());
 
-/** Local reactive-ish state */
-const S = {
-  me: null,               // { uid, name }
-  code: null,             // 4-digit code
-  hostUid: null,          // read from RTDB
-  players: {},            // map uid -> player info
-  chat: [],               // array of messages
-  unsubs: []              // unsubscribe functions
-};
+import { db, authReady } from "./firebase.js";
+import { ref, set, onValue, onDisconnect, serverTimestamp, get } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+import { createStore } from "./tiny-store.js";
+import { freshGame, drawBlack, drawHand, id, ROUND_SECONDS } from "./game.js";
+import { showJoinModal, renderPlayers, renderChat, renderBlack, renderHand, renderSubmissions, qs } from "./ui.js";
 
-/** Boot flow */
-(async function boot(){
-  const user = await authReady; // ensure auth ready (anonymous ok)
-  console.log("[boot] App loaded; waiting for user to join…");
+// ------------------------------------------------
+// Local state
+// ------------------------------------------------
+const store = createStore({
+  me: null,
+  room: null,
+  players: {},
+  chat: [],
+  hand: [],
+  submissions: [],
+  round: null,
+  hostUid: null,
+  started: false,
+});
 
-  // Prefill modal from saved session
-  const saved = load("session", null); // {code, name}
-  const preset = {
-    name: saved?.name || `Player-${Math.floor(Math.random()*90+10)}`,
-    code: saved?.code || ""
-  };
-  showJoinModal(preset, ({name, code}) => {
-    joinRoom({ name, code }).catch(e => {
-      alert("Join failed: " + (e?.message || e));
-      console.error(e);
-    });
-  });
-})();
+// ------------------------------------------------
+// UI Elements
+// ------------------------------------------------
+const joinModal = qs("#join-modal");
+const nameInput = qs("#name-input");
+const roomInput = qs("#room-input");
+const joinBtn   = qs("#join-btn");
+const chatInput = qs("#chat-input");
+const chatSend  = qs("#chat-send");
+const roomCodePill = qs("#room-code-pill");
+const hostControls = qs("#host-controls");
 
-/** Join a room: requires the room to already exist */
-async function joinRoom({ name, code }){
+// ------------------------------------------------
+// Join flow
+// ------------------------------------------------
+showJoinModal(true);
+
+joinBtn.addEventListener("click", async ()=>{
+  const code = roomInput.value.trim();
+  const name = nameInput.value.trim();
+  if(!code || !name) return alert("Enter name and room code");
+  await joinRoom(code, name);
+});
+
+async function joinRoom(code, desiredName){
+  console.log("[joinRoom] Attempting join",{code,desiredName});
   const user = await authReady;
+  console.log("[joinRoom] Auth ready",{uid:user.uid,name:desiredName});
 
-  // Validate 4-digit numeric, and room existence (we do NOT create rooms here)
-  if (!/^\d{4}$/.test(code)) throw new Error("Room code must be 4 digits.");
-  const roomRef = ref(db, `rooms/${code}`);
-  const exists = (await get(roomRef)).exists();
-  if (!exists) throw new Error(`Room ${code} does not exist.`);
-
-  // Write/Upsert my player record
   const playerRef = ref(db, `rooms/${code}/players/${user.uid}`);
-  await set(playerRef, {
-    name,
+  await set(playerRef,{
+    name: desiredName,
     joinedAt: Date.now(),
     connected: true,
     score: 0,
     submitted: false
   });
+  console.log("[joinRoom] Player set OK");
 
-  // Presence
-  const presenceRef = ref(db, `rooms/${code}/presence/${user.uid}`);
-  await set(presenceRef, true);
-  onDisconnect(presenceRef).set(false);
+  const presRef = ref(db, `rooms/${code}/presence/${user.uid}`);
+  await set(presRef,true);
+  onDisconnect(presRef).set(false);
+  console.log("[joinRoom] Presence set + onDisconnect registered");
 
-  // Update local state + persist session (to survive refresh)
-  S.me = { uid: user.uid, name };
-  S.code = code;
-  save("session", { code, name });
+  // Save local
+  localStorage.setItem("cadh-room",code);
+  localStorage.setItem("cadh-name",desiredName);
 
-  // Bind subscriptions once per join
+  store.patch({ me:user.uid, room:code });
   bindRoomSubscriptions(code);
-
-  hideJoinModal();
-  render();
+  showJoinModal(false);
+  roomCodePill.textContent = "Room: "+code;
 }
 
-/** Clear previous listeners then subscribe to room data */
+// ------------------------------------------------
+// Room Subscriptions
+// ------------------------------------------------
 function bindRoomSubscriptions(code){
-  // Detach old
-  S.unsubs.forEach(unsub => { try{unsub();}catch{} });
-  S.unsubs = [];
-
-  const sub = (path, handler) => {
-    const r = ref(db, path);
-    const off = onValue(r, handler, (err)=> console.error("[listen] error", path, err));
-    S.unsubs.push(off);
-  };
-
-  // hostUid
-  sub(`rooms/${code}/hostUid`, (snap) => {
-    S.hostUid = snap.val() || null;
-    render();
+  console.log("[bindRoomSubscriptions] (re)binding listeners for room",code);
+  listen(`rooms/${code}/hostUid`, v=> {
+    console.log("[sub] hostUid =",v);
+    store.patch({ hostUid:v });
+    if(v===store.get().me){
+      console.log("[sub] became host; initializing decks");
+      ensureDecks(code);
+    }
   });
-
-  // players
-  sub(`rooms/${code}/players`, (snap) => {
-    S.players = snap.val() || {};
-    render();
+  listen(`rooms/${code}/started`, v=>{
+    console.log("[sub] started =",v);
+    store.patch({ started:v });
   });
-
-  // chat (ordered by push order; we just read values)
-  sub(`rooms/${code}/chat`, (snap) => {
-    const items = [];
-    snap.forEach(ch => items.push(ch.val()));
-    items.sort((a,b)=> (a.ts||0)-(b.ts||0));
-    S.chat = items;
-    render();
+  listen(`rooms/${code}/players`, v=>{
+    console.log("[sub] players =",v);
+    store.patch({ players:v||{} });
+    renderPlayers(v||{});
   });
-}
-
-/** Render UI */
-function render(){
-  const amHost = S.me?.uid && S.hostUid && S.me.uid === S.hostUid;
-  renderGameUI({
-    code: S.code,
-    me: S.me,
-    players: S.players,
-    chat: S.chat,
-    hostUid: S.hostUid,
-    onSendChat: sendChat,
-    onStartRound: amHost ? hostStartRound : null
+  listen(`rooms/${code}/hands`, v=>{
+    console.log("[sub] hands keys =", v?Object.keys(v):[]);
+  });
+  listen(`rooms/${code}/round`, v=>{
+    console.log("[sub] round =",v);
+    store.patch({ round:v });
+    renderBlack(v?.black||null);
+  });
+  listen(`rooms/${code}/submissions`, v=>{
+    console.log("[sub] submissions len =", v?Object.keys(v).length:0);
+    store.patch({ submissions:Object.values(v||{}) });
+  });
+  listen(`rooms/${code}/chat`, v=>{
+    console.log("[sub] chat len =", v?Object.keys(v).length:0);
+    store.patch({ chat:Object.values(v||{}) });
+    renderChat(Object.values(v||{}));
   });
 }
 
-/** Chat send (no duplicates: handler overwritten each render) */
-async function sendChat(text){
-  if (!S.code || !S.me) return;
-  const msgRef = push(ref(db, `rooms/${S.code}/chat`));
-  await set(msgRef, {
-    from: S.me.uid,
-    name: S.me.name,
-    text,
-    ts: Date.now()
+function listen(path,cb){
+  onValue(ref(db,path), snap=>{
+    cb(snap.val());
   });
 }
 
-/** Minimal start round write (host only; dealing is server/rules dependent) */
-async function hostStartRound(){
-  if (!S.code || !S.me || S.me.uid !== S.hostUid) return;
-  const ids = Object.keys(S.players || {});
-  if (ids.length < 3) { alert("Need at least 3 players to start."); return; }
-
-  const judgeUid = ids[Math.floor(Math.random()*ids.length)];
-  const black = randomBlack();
-
-  await set(ref(db, `rooms/${S.code}/round`), {
-    number: 1,
-    judgeUid,
-    black,
-    deadline: Date.now() + 60_000,
-    pickedSubmissionId: null
-  });
-
-  await set(ref(db, `rooms/${S.code}/started`), true);
+// ------------------------------------------------
+// Hosting / Deck setup
+// ------------------------------------------------
+async function ensureDecks(code){
+  const game = freshGame();
+  const rRef = ref(db,`rooms/${code}/round`);
+  const snap = await get(rRef);
+  if(!snap.exists()){
+    await set(rRef,{
+      number:0,
+      judgeUid:null,
+      black:null,
+      deadline:0,
+      pickedSubmissionId:null
+    });
+  }
+  // Save decks into local store only
+  store.patch({ deck: game });
 }
+
+// ------------------------------------------------
+// Host start round
+// ------------------------------------------------
+export async function hostStartRound(){
+  const s=store.get();
+  if(!s.hostUid || s.hostUid!==s.me) return console.warn("Not host");
+
+  const playerIds = Object.keys(s.players||{});
+  if(playerIds.length<3) return alert("Need 3+ players");
+  console.log("[hostStartRound] playerIds =",playerIds);
+
+  const nextJudge = playerIds[Math.floor(Math.random()*playerIds.length)];
+  const black = drawBlack(s.deck);
+
+  const rRef = ref(db,`rooms/${s.room}/round`);
+  await set(rRef,{
+    number:(s.round?.number||0)+1,
+    judgeUid: nextJudge,
+    black:black,
+    deadline: Date.now()+ROUND_SECONDS*1000,
+    pickedSubmissionId:null
+  });
+  console.log("[hostStartRound] wrote new round");
+}
+
+// ------------------------------------------------
+// Chat
+// ------------------------------------------------
+chatSend.addEventListener("click", async ()=>{
+  const txt=chatInput.value.trim();
+  if(!txt) return;
+  chatInput.value="";
+  const s=store.get();
+  const msgId=id();
+  const refp=ref(db,`rooms/${s.room}/chat/${msgId}`);
+  await set(refp,{
+    from:s.me,
+    name: s.players[s.me]?.name||"anon",
+    text:txt,
+    ts:Date.now()
+  });
+});
+
+// ------------------------------------------------
+// On load
+// ------------------------------------------------
+console.log("[boot] App loaded; waiting for user to join…");
+
+// Restore previous session
+const lastRoom=localStorage.getItem("cadh-room");
+const lastName=localStorage.getItem("cadh-name");
+if(lastRoom && lastName){
+  joinRoom(lastRoom,lastName);
+}
+
+// Expose
+window.hostStartRound=hostStartRound;
