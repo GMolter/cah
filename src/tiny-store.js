@@ -1,22 +1,25 @@
-// STORE_BUILD 2025-09-01T06:15Z
+// STORE_BUILD 2025-09-01T07:25Z
 
-export function createStore(initialState){
-  let state = structuredClone(initialState);
-  const subs = new Set();
+/** Persist a namespaced value in localStorage (JSON). */
+export function save(key, value) {
+  localStorage.setItem("cadh:" + key, JSON.stringify(value));
+}
 
-  function get(){ return state; }
-  function replace(next){
-    state = structuredClone(next);
-    subs.forEach(fn=> fn(state));
+/** Load a namespaced value from localStorage. */
+export function load(key, fallback = null) {
+  const raw = localStorage.getItem("cadh:" + key);
+  if (!raw) return fallback;
+  try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+/** Remove a namespaced value. */
+export function drop(key) {
+  localStorage.removeItem("cadh:" + key);
+}
+
+/** Clear all CADH keys. */
+export function clearAll() {
+  for (const k of Object.keys(localStorage)) {
+    if (k.startsWith("cadh:")) localStorage.removeItem(k);
   }
-  function patch(partial){
-    state = Object.assign({}, state, partial);
-    subs.forEach(fn=> fn(state));
-  }
-  function subscribe(fn){
-    subs.add(fn);
-    fn(state);
-    return ()=> subs.delete(fn);
-  }
-  return { get, replace, patch, subscribe };
 }
