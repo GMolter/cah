@@ -1,113 +1,122 @@
-// UI_BUILD 2025-09-01T06:15Z
+// UI_BUILD 2025-09-01T07:25Z
 
-export class UI {
-  constructor(store, handlers){
-    this.store = store;
-    this.handlers = handlers;
-    this.$ = s => document.querySelector(s);
+/** Show the join modal and wire its button. */
+export function showJoinModal(preset, onJoin) {
+  const modal = document.getElementById("join-modal");
+  const nameInput = document.getElementById("name-input");
+  const roomInput = document.getElementById("room-input");
+  const btn = document.getElementById("join-btn");
 
-    this.$roundBlack = this.$("#round-black");
-    this.$roundMeta  = this.$("#round-meta");
-    this.$startWrap  = this.$("#start-controls");
-    this.$startBtn   = this.$("#start-round");
+  nameInput.value = (preset?.name || "");
+  roomInput.value = (preset?.code || "");
 
-    this.$players    = this.$("#players");
-    this.$hand       = this.$("#hand");
-    this.$subs       = this.$("#submissions");
-    this.$chatLog    = this.$("#chat-log");
-    this.$roomCode   = this.$("#room-code");
+  const tryJoin = () => {
+    const name = nameInput.value.trim();
+    const code = roomInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    if (!/^\d{4}$/.test(code)) { alert("Room code must be 4 digits"); roomInput.focus(); return; }
+    onJoin({ name, code });
+  };
 
-    this.$startBtn.addEventListener("click", ()=> this.handlers.onStartRound?.());
+  btn.onclick = tryJoin;
+  roomInput.onkeydown = (e)=> { if(e.key === "Enter") tryJoin(); };
+  nameInput.onkeydown = (e)=> { if(e.key === "Enter") tryJoin(); };
 
-    this.unsub = store.subscribe((s)=> this.render(s));
+  modal.style.display = "grid";
+}
+export function hideJoinModal() {
+  const modal = document.getElementById("join-modal");
+  modal.style.display = "none";
+}
+
+/** Render the whole app */
+export function renderGameUI(model) {
+  const app = document.getElementById("app");
+  const roomBadge = document.getElementById("room-badge");
+  if (!model) {
+    app.innerHTML = `<div class="panel"><header><strong>Loading…</strong></header><div class="body">Please wait</div></div>`;
+    return;
   }
+  roomBadge.textContent = `Room ${model.code}`;
+  roomBadge.style.display = "block";
 
-  render(s){
-    // header / room code
-    const code = localStorage.getItem("cadh-room") || "—";
-    if (this.$roomCode) this.$roomCode.textContent = code;
+  const players = Object.values(model.players || {});
+  const chat = model.chat || [];
+  const hostUid = model.hostUid || null;
+  const amHost = model.me?.uid && hostUid && model.me.uid === hostUid;
 
-    // players
-    this.$players.innerHTML = "";
-    const ids = Object.keys(s.players||{});
-    ids.sort();
-    ids.forEach(uid=>{
-      const p = s.players[uid];
-      const el = document.createElement("div");
-      el.className = "player" + (uid===this.handlers.meId ? " me":"");
-      el.innerHTML = `
-        <div><strong>${escapeHtml(p.name||"Player")}</strong></div>
-        <div class="muted small">Score: ${p.score||0}${p.submitted ? " • submitted": ""}</div>
-      `;
-      this.$players.appendChild(el);
-    });
+  app.innerHTML = `
+    <section class="panel">
+      <header>
+        <strong>Players</strong>
+        <div>${players.length} joined</div>
+      </header>
+      <div class="body players">
+        <ul>
+          ${players.map(p => `
+            <li>
+              <span>${escapeHtml(p.name)}</span>
+              <span>${Number(p.score||0)}</span>
+            </li>
+          `).join("")}
+        </ul>
+        ${amHost ? `
+          <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+            <button id="start-round" class="btn-primary">Start Round</button>
+            <span style="color:#aaa;font-size:13px;">(Need 3+ players)</span>
+          </div>
+        ` : `
+          <p style="margin-top:12px;color:#aaa;">Waiting for host to start…</p>
+        `}
+      </div>
+    </section>
 
-    // hand
-    this.$hand.innerHTML = "";
-    const myHand = (s.hands||{})[this.handlers.meId] || {};
-    Object.values(myHand).forEach(card=>{
-      const el = document.createElement("div");
-      el.className = "card";
-      el.textContent = card.text;
-      el.addEventListener("click", ()=>{
-        if (s.round?.judgeUid === this.handlers.meId) return; // judge cannot play
-        this.handlers.onPlayCard?.(card.id);
-      });
-      this.$hand.appendChild(el);
-    });
+    <section class="panel">
+      <header><strong>Room Chat</strong></header>
+      <div class="body">
+        <div id="chat-box" class="chat-box">
+          ${chat.map(m => `
+            <div class="chat-item">
+              <span class="name">${escapeHtml(m.name)}</span>
+              <span class="text">${escapeHtml(m.text)}</span>
+            </div>
+          `).join("")}
+        </div>
+        <div class="chat-input">
+          <input id="chat-input" placeholder="Type message…" maxlength="500">
+          <button id="chat-send" class="btn">Send</button>
+        </div>
+      </div>
+    </section>
+  `;
 
-    // round
-    if (s.round?.black?.text) {
-      this.$roundBlack.textContent = s.round.black.text;
-    } else {
-      this.$roundBlack.textContent = s.hostUid ? "Waiting for round…" : "Waiting for host…";
-    }
-    const judgeName = s.round?.judgeUid && s.players[s.round.judgeUid]?.name;
-    const deadline  = s.round?.deadline ? new Date(s.round.deadline).toLocaleTimeString() : "—";
-    this.$roundMeta.innerHTML = `
-      <span class="muted">Judge:</span> ${escapeHtml(judgeName || "—")}
-      &nbsp;&nbsp; <span class="muted">Ends:</span> ${deadline}
-    `;
+  // Scroll chat to bottom on render
+  const box = document.getElementById("chat-box");
+  if (box) box.scrollTop = box.scrollHeight;
 
-    // start button (host only, ≥3 players, not started or ready for next)
-    const amHost = !!(s.hostUid && s.hostUid === this.handlers.meId);
-    const playerCount = Object.keys(s.players||{}).length;
-    const canSeeStart = amHost && playerCount >= 3;
-    this.$startWrap.classList.toggle("hidden", !canSeeStart);
+  // Wire buttons (overwrite handlers each render so no duplicates)
+  const startBtn = document.getElementById("start-round");
+  if (startBtn) startBtn.onclick = () => model.onStartRound && model.onStartRound();
 
-    // submissions (only visible to host for picking)
-    this.$subs.innerHTML = "";
-    const subs = s.submissions || [];
-    subs.forEach(sub=>{
-      const el = document.createElement("div");
-      el.className = "submission";
-      el.innerHTML = `
-        <div>${escapeHtml(sub.card?.text || "")}</div>
-        <div class="by">by ${escapeHtml(s.players[sub.by]?.name || "Player")}</div>
-      `;
-      el.addEventListener("click", ()=>{
-        if (amHost && s.round?.judgeUid === this.handlers.meId) {
-          this.handlers.onJudgePick?.(sub.id);
-        }
-      });
-      this.$subs.appendChild(el);
-    });
-
-    // chat
-    this.$chatLog.innerHTML = "";
-    const chat = s.chat || [];
-    chat.forEach(msg=>{
-      const row = document.createElement("div");
-      row.className = "chat-row";
-      row.innerHTML = `<span class="chat-name">${escapeHtml(msg.name||"")}</span>${escapeHtml(msg.text||"")}`;
-      this.$chatLog.appendChild(row);
-    });
-    this.$chatLog.scrollTop = this.$chatLog.scrollHeight;
+  const sendBtn = document.getElementById("chat-send");
+  const input = document.getElementById("chat-input");
+  if (sendBtn && input) {
+    const send = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      model.onSendChat && model.onSendChat(text);
+      input.value = "";
+      input.focus();
+    };
+    sendBtn.onclick = send;
+    input.onkeydown = (e)=> { if(e.key === "Enter") send(); };
   }
 }
 
 function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, ch => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[ch]));
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;");
 }
