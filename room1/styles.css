@@ -8,19 +8,33 @@ h1,h2{margin:0}
 button{background:#fff;color:#000;border:0;border-radius:10px;padding:8px 12px;font-weight:600;cursor:pointer;transition:transform .08s}
 button:active{transform:translateY(1px)}
 button.danger{background:#b4002b;color:#fff}
-/* Force left/right placement across full width */
-.grid.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;width:100%}
-@media (max-width:900px){.grid.two{grid-template-columns:1fr}}
+
+/* 3-column layout: chat rail (360px) | gutter | compact scoreboard (320px) */
+.grid.three{
+  display:grid;
+  grid-template-columns:360px 1fr 320px;
+  gap:16px;
+  align-items:start;
+  width:100%;
+}
+.gutter{min-height:360px}
+@media (max-width:1100px){
+  .grid.three{grid-template-columns:1fr}
+  .gutter{display:none}
+}
+
 /* Chat (left) */
 .chat{display:flex;flex-direction:column;gap:8px;min-height:360px}
-#chatLog{flex:1;max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
+#chatLog{flex:1;max-height:66vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding-right:4px}
 #chatForm{display:flex;gap:6px}
 #chatInput{flex:1;padding:8px;border-radius:8px;border:1px solid #2a2a2a;background:#0b0b0b;color:#fff}
-.chat-msg{padding:6px 8px;border-radius:8px;max-width:80%}
+.chat-msg{padding:6px 8px;border-radius:8px;max-width:92%}
 .chat-msg.self{background:#1e1e1e;align-self:flex-end}
 .chat-msg.other{background:#2a2a2a;align-self:flex-start}
 .chat-msg.system{color:var(--muted);font-size:.85rem;align-self:center;background:none}
-/* Scoreboard (right) */
+
+/* Scoreboard (right, compact) */
+.scoreboard{min-width:260px}
 .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .scoreboard ul{list-style:none;padding:0;margin:0}
 .scoreboard li{padding:8px 0;border-bottom:1px solid #222;display:flex;align-items:center;gap:10px}
