@@ -14,53 +14,77 @@ let me=null, hb=null;
 onAuthStateChanged(auth, async u=>{
   if(!u){ location.href="../"; return; }
   me=u;
-  await safeJoin();
-  watchPlayers();
-  watchChat();
-  startHeartbeat();
+  try {
+    await joinOrRestore();
+    watchPlayers();
+    watchChat();
+    startHeartbeat();
+  } catch(err){
+    console.error("Join error:", err);
+  }
 });
 
-/* Join logic: preserve within 45s, otherwise new join; count via transaction */
-async function safeJoin(){
+/* Join with clear create/update paths + 45s restore */
+async function joinOrRestore(){
   const uid=me.uid, prof=(await get(ref(db,`profiles/${uid}`))).val()||{};
   const pRef=ref(db,`rooms/${ROOM}/players/${uid}`);
   const now=Date.now();
-  const existing=(await get(pRef)).val();
+  const existingSnap=await get(pRef);
+  const existing=existingSnap.val();
+
   let isNew=true, joinedAt=now;
-  if(existing && now-(existing.lastSeen||0)<=45000){ isNew=false; joinedAt=existing.joinedAt||now; }
 
-  await update(pRef,{
-    nickname:prof.nickname||prof.firstName||"User",
-    photoURL:prof.photoURL||"../assets/default-avatar.png",
-    joinedAt,lastSeen:now,status:"online"
-  });
+  if(existing){
+    // If back within 45s, keep original seat
+    if(now-(existing.lastSeen||0)<=45000){
+      isNew=false; joinedAt=existing.joinedAt||now;
+      await update(pRef,{lastSeen:now,status:"online"}); // quick bump
+    } else {
+      // Treated as new seat
+      await set(pRef,{
+        nickname:displayNick(prof),
+        photoURL:prof.photoURL||"../assets/default-avatar.png",
+        joinedAt, lastSeen:now, status:"online"
+      });
+    }
+  } else {
+    // First time create with full object
+    await set(pRef,{
+      nickname:displayNick(prof),
+      photoURL:prof.photoURL||"../assets/default-avatar.png",
+      joinedAt, lastSeen:now, status:"online"
+    });
+  }
 
-  if(isNew){ await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>(c||0)+1); }
+  if(isNew || !existing){ // only when we actually created a new seat
+    await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>(c||0)+1);
+  }
 
-  // Cleanly mark offline on disconnect (no remove to avoid flicker)
+  // Mark offline on disconnect (no removal to avoid flicker)
   onDisconnect(pRef).update({status:"offline",lastSeen:Date.now()});
 
-  // "System" message shaped as normal chat (type: 'message') to satisfy rules
-  sendSystem(isNew?`${displayNick(prof)} joined the room`:`${displayNick(prof)} reconnected`);
+  await sendSystem(isNew && !existing ? `${displayNick(prof)} joined the room` : `${displayNick(prof)} reconnected`);
 }
 
 /* Leave without signing out */
 $("#leaveBtn").onclick=async ()=>{
   if(!me) return;
   const uid=me.uid, pRef=ref(db,`rooms/${ROOM}/players/${uid}`);
-  await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>Math.max((c||1)-1,0));
-  await set(pRef,null);
-  await sendSystem(`${me.displayName?.split(" ")[0]||"User"} left the room`);
+  try{
+    await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>Math.max((c||1)-1,0));
+    await set(pRef,null);
+    await sendSystem(`${me.displayName?.split(" ")[0]||"User"} left the room`);
+  }catch(e){ console.error("Leave error:",e); }
   location.href="../";
 };
 
-/* Heartbeat */
+/* Heartbeat (15s) */
 function startHeartbeat(){
   clearInterval(hb);
-  hb=setInterval(()=>{ if(me){ update(ref(db,`rooms/${ROOM}/players/${me.uid}`),{lastSeen:Date.now(),status:"online"}); } },15000);
+  hb=setInterval(()=>{ if(me){ update(ref(db,`rooms/${ROOM}/players/${me.uid}`),{lastSeen:Date.now(),status:"online"}).catch(()=>{}); } },15000);
 }
 
-/* Scoreboard (top-right), sorted by joinedAt, duplicate names suffix * */
+/* Scoreboard */
 function watchPlayers(){
   onValue(ref(db,`rooms/${ROOM}/players`),snap=>{
     const list=$("#playerList"); const arr=[];
@@ -69,20 +93,22 @@ function watchPlayers(){
     $("#playerCount").textContent=arr.length;
     const seen=new Set();
     list.innerHTML=arr.map(p=>{
-      const base=(p.nickname||"User"); const key=base.toLowerCase();
+      const base=p.nickname||"User"; const key=base.toLowerCase();
       const name=seen.has(key)?`${base}*`:(seen.add(key),base);
       return `<li><img src="${p.photoURL}" alt=""><span>${name}</span></li>`;
     }).join("");
-  });
+  }, (err)=>console.error("players watch error:",err));
 }
 
-/* Chat (top-left) */
+/* Chat */
 $("#chatForm").onsubmit=async e=>{
   e.preventDefault();
   const text=$("#chatInput").value.trim(); if(!text) return;
   const prof=(await get(ref(db,`profiles/${me.uid}`))).val()||{};
-  await push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:displayNick(prof),text, type:"message", ts:Date.now()});
-  $("#chatInput").value="";
+  try{
+    await push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:displayNick(prof),text,type:"message",ts:Date.now()});
+    $("#chatInput").value="";
+  }catch(err){ console.error("chat push error:", err); }
 };
 function watchChat(){
   onValue(ref(db,`rooms/${ROOM}/chat`),snap=>{
@@ -94,10 +120,10 @@ function watchChat(){
       div.textContent=isSys ? m.text : `${m.nickname}: ${m.text}`;
       log.appendChild(div);
     }); log.scrollTop=log.scrollHeight;
-  });
+  }, (err)=>console.error("chat watch error:",err));
 }
 function sendSystem(text){
   const nick = me?.displayName?.split(" ")[0] || "User";
-  return push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nick,text, type:"message", sys:true, ts:Date.now()});
+  return push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nick,text,type:"message",sys:true,ts:Date.now()});
 }
 function displayNick(prof){ return (prof.nickname||prof.firstName||"User"); }
