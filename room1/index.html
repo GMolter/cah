@@ -1,1 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CAH Room 1</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="./styles.css" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Room 1</h1>
+      <button id="leaveBtn" class="outline small">Leave Room</button>
+    </header>
 
+    <section class="scoreboard card">
+      <h2>Players (<span id="playerCount">0</span>/8)</h2>
+      <ul id="playerList"></ul>
+    </section>
+
+    <section class="chat card">
+      <div id="chatLog"></div>
+      <form id="chatForm">
+        <input id="chatInput" type="text" maxlength="300" placeholder="Type a message…" autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
