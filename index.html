@@ -1,47 +1,91 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>CA(D)H</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="./styles.css">
-  </head>
-  <body>
-    <header class="site-header">
-      <h1>Cards Against (Digital) Humanity</h1>
-      <div class="room-badge" id="room-badge" style="display:none;"></div>
-    </header>
-
-    <!-- Join Modal -->
-    <div id="join-modal" class="modal">
-      <div class="modal-card">
-        <h2>Join a Room</h2>
-        <label class="field">
-          <span>Username</span>
-          <input id="name-input" type="text" placeholder="Your name" maxlength="24">
-        </label>
-        <label class="field">
-          <span>Room Code (4 digits)</span>
-          <input id="room-input" type="text" inputmode="numeric" pattern="[0-9]{4}" placeholder="1234" maxlength="4">
-        </label>
-        <div class="actions">
-          <button id="join-btn" class="btn-primary">Join</button>
-        </div>
-        <p class="hint">Tip: The host creates a 4-digit room on the <code>/config</code> page.</p>
-      </div>
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Cards Against (Digital) Humanity</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- App Header -->
+  <header class="topbar">
+    <h1>Cards Against (Digital) Humanity</h1>
+    <div class="room-pill">
+      <span id="room-code-pill">Room: —</span>
     </div>
+  </header>
 
-    <!-- Main App Area -->
-    <main id="app" class="app-shell">
-      <!-- Populated by UI render -->
-    </main>
+  <!-- Main layout -->
+  <main class="layout">
+    <section class="column round-col">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Round</h2>
+          <div class="round-badges">
+            <span id="round-status" class="badge">Waiting…</span>
+            <span id="spectator-badge" class="badge badge-muted">Spectator</span>
+          </div>
+        </div>
+        <div class="round-body">
+          <div id="black-card" class="black-card">—</div>
+          <div id="timer" class="round-timer">0:00</div>
+          <div id="submissions" class="submissions"></div>
+          <div id="hand" class="hand"></div>
+          <div id="host-controls" class="host-controls"></div>
+        </div>
+      </div>
+    </section>
 
-    <!-- Scripts (order matters) -->
-    <script type="module" src="./firebase.js"></script>
-    <script type="module" src="./game.js"></script>
-    <script type="module" src="./tiny-store.js"></script>
-    <script type="module" src="./ui.js"></script>
-    <script type="module" src="./app.js"></script>
-  </body>
+    <section class="column players-col">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Players</h2>
+        </div>
+        <div class="players-body">
+          <div id="players" class="players-list"></div>
+
+          <div class="chat">
+            <div id="chat-log" class="chat-log"></div>
+            <div class="chat-input">
+              <input id="chat-input" type="text" placeholder="Type a message…" />
+              <button id="chat-send" class="btn">Send</button>
+            </div>
+            <p class="tip">Tip: only the host can start rounds; need 3+ players.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Join modal -->
+  <div id="join-modal" class="modal">
+    <div class="modal-card">
+      <h3>Join a Room</h3>
+
+      <label class="field">
+        <span>Display name</span>
+        <input id="name-input" type="text" maxlength="32" />
+      </label>
+
+      <label class="field">
+        <span>Room code</span>
+        <input id="room-input" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" />
+      </label>
+
+      <div class="modal-actions">
+        <button id="join-btn" class="btn btn-primary">Join</button>
+      </div>
+
+      <p class="hint">
+        Or open <a href="./config/" target="_blank" rel="noopener">config</a> to create a room as host.
+      </p>
+    </div>
+  </div>
+
+  <!-- Single entrypoint; the module imports everything else from /src -->
+  <script type="module" src="./src/app.js"></script>
+</body>
 </html>
