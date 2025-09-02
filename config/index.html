@@ -1,92 +1,79 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
+  <meta charset="UTF-8" />
   <title>CA(D)H Config</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <style>
-    body{margin:0;background:#0b0b0f;color:#fff;font:16px/1.5 system-ui,Segoe UI,Roboto}
-    .wrap{max-width:700px;margin:8vh auto;padding:24px;border:1px solid #272738;border-radius:14px;background:#13131a}
-    h1{margin:0 0 6px}
-    p{color:#b8b8c6}
-    .row{display:flex;gap:10px;margin:16px 0}
-    .btn{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:#2a2a3a;color:#fff}
-    .btn-primary{background:linear-gradient(90deg,#6e8bff,#9f67ff)}
-    .out{white-space:pre-wrap;background:#0f0f17;border:1px solid #272738;border-radius:10px;padding:10px;min-height:60px}
-    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#1b1b28; padding:2px 6px; border-radius:6px}
-  </style>
+  <link rel="stylesheet" href="../styles.css">
 </head>
 <body>
-  <div class="wrap">
-    <h1>Config • Create 4-Digit Room</h1>
-    <p>This page signs in anonymously, deletes existing rooms, and creates a new 4-digit room with you as host.</p>
-    <div class="row">
-      <button id="create" class="btn btn-primary">Create New Room</button>
-      <button id="open" class="btn">Open Main App</button>
-    </div>
-    <div id="status" class="out">CONFIG_BUILD <span id="ts"></span></div>
+  <div id="config">
+    <h1>Config Page</h1>
+    <button id="create-room">Create New Room</button>
+    <div id="status"></div>
   </div>
 
   <script type="module">
-    import { authReady, db, ref, get, set, remove } from "../firebase.js";
+    console.log("CONFIG_BUILD", new Date().toISOString());
 
-    const ts = new Date().toISOString();
-    document.getElementById("ts").textContent = ts;
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+    import { getDatabase, ref, set, remove, get, child } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
-    const status = (msg)=> {
-      const el = document.getElementById("status");
-      el.textContent += "\\n" + msg;
-      el.scrollTop = el.scrollHeight;
-      console.log("[status]", msg);
+    const firebaseConfig = {
+      apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
+      authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
+      projectId: "olio-cardsagainsthumanity",
+      storageBucket: "olio-cardsagainsthumanity.appspot.com",
+      messagingSenderId: "256442998757",
+      appId: "1:256442998757:web:ab26e55db0b5029879990c",
+      databaseURL: "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com/"
     };
 
-    function randomCode(){ return String(Math.floor(1000 + Math.random()*9000)); }
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth();
 
-    async function create(){
-      try{
-        status("Signing in…");
-        const user = await authReady;
-        status("Signed in: " + user.uid);
+    const status = document.getElementById("status");
+    const btn = document.getElementById("create-room");
 
-        // Delete each room individually (root delete may be denied by rules)
-        status("Deleting existing rooms…");
-        const roomsSnap = await get(ref(db, "rooms"));
-        if (roomsSnap.exists()) {
-          const rooms = roomsSnap.val();
-          const codes = Object.keys(rooms);
-          for (const c of codes) {
-            try {
-              await remove(ref(db, `rooms/${c}`));
-              status(`Deleted room ${c}`);
-            } catch (e) {
-              status(`Could not delete room ${c}: ${e?.message || e}`);
-            }
-          }
-        } else {
-          status("No rooms found.");
-        }
-
-        // Create new
-        const code = randomCode();
-        await set(ref(db, `rooms/${code}`), {
-          hostUid: user.uid,
-          createdAt: Date.now(),
-          started: false
-        });
-        status("Created room " + code);
-
-        // Save a convenience session for main app (host name is arbitrary)
-        localStorage.setItem("cadh:session", JSON.stringify({ code, name: "Host" }));
-
-        status("Done. Open the main app and join as Host.");
-      }catch(e){
-        console.error("[config] FAILED", e);
-        status("Error: " + (e?.message || e));
-      }
+    function log(msg) {
+      console.log("[status]", msg);
+      status.textContent = msg;
     }
 
-    document.getElementById("create").onclick = create;
-    document.getElementById("open").onclick = ()=> location.href = "../index.html";
+    async function createRoom() {
+      log("Signing in…");
+      const userCred = await signInAnonymously(auth);
+      log("Signed in");
+
+      // Delete existing rooms
+      log("Deleting existing rooms…");
+      try {
+        await remove(ref(db, "rooms"));
+        log("Old rooms deleted");
+      } catch (e) {
+        console.error("[config] delete rooms FAILED", e);
+        log("FAILED deleting rooms: " + e);
+        return;
+      }
+
+      // Generate numeric code
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
+
+      // Create base room
+      const roomRef = ref(db, `rooms/${code}`);
+      await set(roomRef, {
+        createdAt: Date.now(),
+        hostUid: userCred.user.uid
+      });
+
+      localStorage.setItem("cadh-room", code);
+      localStorage.setItem("cadh-host", "true");
+
+      log("Room created with code: " + code);
+    }
+
+    btn.addEventListener("click", createRoom);
   </script>
 </body>
 </html>
