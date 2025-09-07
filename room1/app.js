@@ -29,18 +29,20 @@ onAuthStateChanged(auth, async (u) => {
   me = u;
   console.log("[auth] uid:", me.uid);
 
-  watchPlayers();   // attach listeners first
+  // Attach listeners first
+  watchPlayers();
   watchChat();
   startHeartbeat();
 
-  await joinSeatMerge();  // then create/refresh our seat
+  // Create/refresh our seat
+  await joinSeatStrictChild();
 });
 
-/* ===== Seat create/refresh using ROOT update() (merge-safe) ===== */
-async function joinSeatMerge() {
+/* ===== Strict child write (cannot clobber siblings, parent writes now blocked by rules) ===== */
+async function joinSeatStrictChild() {
   const uid = me.uid;
 
-  // profile lookup (best effort)
+  // profile
   let prof = {};
   try {
     const ps = await get(ref(db, `profiles/${uid}`));
@@ -53,20 +55,15 @@ async function joinSeatMerge() {
   const photoURL = prof.photoURL || "../assets/default-avatar.png";
   const now = Date.now();
 
-  // merge-only write at parent via root update
-  const updates = {};
-  updates[`rooms/${ROOM}/players/${uid}`] = {
-    nickname, photoURL, joinedAt: now, lastSeen: now, status: "online"
-  };
+  const seatRef = ref(db, `rooms/${ROOM}/players/${uid}`);
+  const seatObj = { nickname, photoURL, joinedAt: now, lastSeen: now, status: "online" };
 
   try {
-    await update(ref(db), updates);  // cannot clobber siblings
-    onDisconnect(ref(db, `rooms/${ROOM}/players/${uid}`))
-      .update({ status: "offline", lastSeen: Date.now() })
-      .catch(()=>{});
-    console.log("[seat] merge set OK for", uid);
+    await set(seatRef, seatObj);  // write only our child node
+    onDisconnect(seatRef).update({ status: "offline", lastSeen: Date.now() }).catch(()=>{});
+    console.log("[seat] set OK for", uid);
   } catch (e) {
-    console.error("[seat] merge set FAILED:", e?.message || e);
+    console.error("[seat] set FAILED:", e?.message || e);
     toast("Couldn’t join the room (permissions).", 4000);
   }
 }
@@ -112,9 +109,8 @@ function watchPlayers() {
       return `<li><img src="${avatar}" alt=""><span>${name}</span></li>`;
     }).join("");
 
-    const ids = rows.map(r => r.id);
     console.log("[players] KEYS =>", Object.keys(raw));
-    console.log("[players] render =>", rows.length, ids);
+    console.log("[players] render =>", rows.length, rows.map(r=>r.id));
   }, (err) => {
     console.error("[players] onValue ERROR =>", err?.message || err);
   });
