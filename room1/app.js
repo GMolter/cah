@@ -7,23 +7,24 @@ const cfg={apiKey:"AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",authDomain:"olio-car
 const app=initializeApp(cfg);
 const auth=getAuth(app);
 const db=getDatabase(app,"https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com/");
-
 const ROOM="room1";
 const $=q=>document.querySelector(q);
+
 let me=null, hb=null;
+let lastRoster=new Set(); // for transient join/leave toasts
 
 /* Auth */
 onAuthStateChanged(auth, async u=>{
   if(!u){ location.href="../"; return; }
   me=u;
-  console.log("[auth] signed in as", me.uid);
+  console.log("[auth] uid:", me.uid);
   await joinOrRestore();
   watchPlayers();
   watchChat();
   startHeartbeat();
 });
 
-/* Join with explicit create/update and transactional count. */
+/* Join: explicit create vs preserve (45s), never touch others */
 async function joinOrRestore(){
   const uid=me.uid;
   const prof=(await get(ref(db,`profiles/${uid}`))).val()||{};
@@ -36,15 +37,14 @@ async function joinOrRestore(){
 
   if(existing){
     if(now-(existing.lastSeen||0)<=45000){
-      preserved=true;
-      joinedAt=existing.joinedAt||now;
+      preserved=true; joinedAt=existing.joinedAt||now;
       await update(pRef,{lastSeen:now,status:"online"});
     }else{
-      await set(pRef,{nickname:nameOf(prof),photoURL:prof.photoURL||"../assets/default-avatar.png",joinedAt,lastSeen:now,status:"online"});
+      await set(pRef,{nickname:nickOf(prof),photoURL:prof.photoURL||"../assets/default-avatar.png",joinedAt,lastSeen:now,status:"online"});
       created=true;
     }
   }else{
-    await set(pRef,{nickname:nameOf(prof),photoURL:prof.photoURL||"../assets/default-avatar.png",joinedAt,lastSeen:now,status:"online"});
+    await set(pRef,{nickname:nickOf(prof),photoURL:prof.photoURL||"../assets/default-avatar.png",joinedAt,lastSeen:now,status:"online"});
     created=true;
   }
 
@@ -53,9 +53,7 @@ async function joinOrRestore(){
   }
 
   onDisconnect(pRef).update({status:"offline",lastSeen:Date.now()});
-
-  const msg = created ? `${nameOf(prof)} joined the room` : (preserved ? `${nameOf(prof)} reconnected` : `${nameOf(prof)} updated`);
-  await sendSystem(msg);
+  toast(created ? `${nickOf(prof)} joined the room` : (preserved ? `${nickOf(prof)} reconnected` : `${nickOf(prof)} updated`));
   console.log("[join] created:",created,"preserved:",preserved,"joinedAt:",joinedAt);
 }
 
@@ -66,66 +64,75 @@ $("#leaveBtn").onclick=async ()=>{
   try{
     await runTransaction(ref(db,`rooms/${ROOM}/count`),c=>Math.max((c||1)-1,0));
     await set(pRef,null);
-    await sendSystem(`${me.displayName?.split(" ")[0]||"User"} left the room`);
+    toast(`${me.displayName?.split(" ")[0]||"User"} left the room`);
   }catch(e){ console.error("[leave] error",e); }
   location.href="../";
 };
 
-/* Heartbeat every 15s to keep lastSeen fresh */
+/* Heartbeat */
 function startHeartbeat(){
   clearInterval(hb);
-  hb=setInterval(()=>{
-    if(me){
-      update(ref(db,`rooms/${ROOM}/players/${me.uid}`),{lastSeen:Date.now(),status:"online"}).catch(()=>{});
-    }
-  },15000);
+  hb=setInterval(()=>{ if(me){ update(ref(db,`rooms/${ROOM}/players/${me.uid}`),{lastSeen:Date.now(),status:"online"}).catch(()=>{}); } },15000);
 }
 
-/* Scoreboard */
+/* Scoreboard + local-only join/leave notices */
 function watchPlayers(){
   const playersRef=ref(db,`rooms/${ROOM}/players`);
   onValue(playersRef,snap=>{
-    const arr=[]; snap.forEach(ch=>arr.push({...ch.val(), _key: ch.key}));
-    console.log("[players] children:",arr.length, arr.map(p=>p._key));
-    arr.sort((a,b)=>(a.joinedAt||0)-(b.joinedAt||0));
-    $("#playerCount").textContent=arr.length;
+    const entries=[]; snap.forEach(ch=>entries.push({id:ch.key, ...ch.val()}));
+    entries.sort((a,b)=>(a.joinedAt||0)-(b.joinedAt||0));
 
+    // UI render
+    $("#playerCount").textContent=entries.length;
     const seen=new Set();
-    $("#playerList").innerHTML=arr.map(p=>{
+    $("#playerList").innerHTML=entries.map(p=>{
       const base=p.nickname||"User"; const k=base.toLowerCase();
       const name=seen.has(k)?`${base}*`:(seen.add(k),base);
       const avatar=p.photoURL||"../assets/default-avatar.png";
       return `<li><img src="${avatar}" alt=""><span>${name}</span></li>`;
     }).join("");
+
+    // Local-only toasts by diffing last roster
+    const current=new Set(entries.map(e=>e.id));
+    for(const id of current){ if(!lastRoster.has(id)) toast(`${nameForId(id, entries)} joined`, 4000); }
+    for(const id of lastRoster){ if(!current.has(id)) toast(`${nameForId(id, entries, "(left)")} left`, 4000); }
+    lastRoster=current;
+
+    console.log("[players] total:", entries.length, "ids:", entries.map(e=>e.id));
   }, err=>console.error("[players] watch error",err));
 }
 
-/* Chat */
+function nameForId(id, list, fallback="User"){
+  const f=list?.find(e=>e.id===id); return f?.nickname || fallback;
+}
+
+/* Chat (only user messages go to DB) */
 $("#chatForm").onsubmit=async e=>{
   e.preventDefault();
   const text=$("#chatInput").value.trim(); if(!text) return;
   const prof=(await get(ref(db,`profiles/${me.uid}`))).val()||{};
   try{
-    await push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nameOf(prof),text,type:"message",ts:Date.now()});
+    await push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nickOf(prof),text,type:"message",ts:Date.now()});
     $("#chatInput").value="";
   }catch(err){ console.error("[chat] push error",err); }
 };
-
 function watchChat(){
   onValue(ref(db,`rooms/${ROOM}/chat`),snap=>{
     const log=$("#chatLog"); log.innerHTML="";
     snap.forEach(s=>{
       const m=s.val(); const div=document.createElement("div");
-      const isSys = m.sys === true || /joined the room|left the room|reconnected/.test(m.text||"");
-      div.className="chat-msg "+(isSys?"system":(m.uid===me.uid?"self":"other"));
-      div.textContent=isSys ? m.text : `${m.nickname}: ${m.text}`;
+      div.className="chat-msg "+(m.uid===me.uid?"self":"other");
+      div.textContent=`${m.nickname}: ${m.text}`;
       log.appendChild(div);
     }); log.scrollTop=log.scrollHeight;
   }, err=>console.error("[chat] watch error",err));
 }
 
-function sendSystem(text){
-  const nick = me?.displayName?.split(" ")[0] || "User";
-  return push(ref(db,`rooms/${ROOM}/chat`),{uid:me.uid,nickname:nick,text,type:"message",sys:true,ts:Date.now()});
+/* Transient toasts (no DB) */
+function toast(text, ms=5000){
+  const wrap=$("#toasts"); const t=document.createElement("div");
+  t.className="toast"; t.textContent=text; wrap.appendChild(t);
+  setTimeout(()=>{ t.remove(); }, ms);
 }
-function nameOf(prof){ return (prof.nickname||prof.firstName||"User"); }
+
+function nickOf(prof){ return (prof.nickname||prof.firstName||"User"); }
