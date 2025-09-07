@@ -2,91 +2,94 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>CAH Config</title>
+  <title>CAH Config (Admin)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root{--bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;--ok:#15c27f;--err:#ff6b6b}
+    :root{--bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;--ok:#15c27f;--err:#ff6b6b;--accent:#b4002b}
     *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
     main{max-width:980px;margin:24px auto;padding:0 16px}
     h1{margin:0 0 12px} h2{margin:0 0 12px;font-size:18px}
-    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 8px 28px rgba(0,0,0,.45);margin:12px 0}
     input,button{font:inherit}
     input{padding:10px;border-radius:10px;border:1px solid var(--ring);background:#0b0b0b;color:#fff}
-    input[readonly]{opacity:.8}
     button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
     button.primary{background:#fff;color:#000} button.ghost{background:#1f1f1f;color:#fff}
+    button.danger{background:var(--accent);color:#fff}
     small.muted{color:var(--muted)} .badge{padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px}
     .ok{background:rgba(21,194,127,.12);color:#7ef1c1} .err{background:rgba(255,107,107,.12);color:#ffc9c9}
-    ul{margin:8px 0 0;padding:0;list-style:none} li{padding:8px 0;border-bottom:1px solid #1f1f1f}
     .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
     .toast{background:#1a1a1a;color:#e6e6e6;padding:10px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:900px){.grid{grid-template-columns:1fr}}
+    .user-card{border:1px solid #1f1f1f;border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .user-meta{display:flex;flex-direction:column;gap:2px}
+    .dim{color:#bcbcbc;font-size:12px}
+    .inline{display:inline-flex;gap:8px;align-items:center}
   </style>
 </head>
 <body>
   <main>
     <h1>CAH Config</h1>
 
-    <!-- Auth -->
-    <section class="card">
-      <h2>Sign in</h2>
+    <!-- Non-admin view -->
+    <section id="blocked" class="card" style="display:none">
+      <h2>Admin Area</h2>
+      <p class="muted">You don’t have access to this page.</p>
       <div class="row">
-        <button id="googleBtn" class="primary">Continue with Google</button>
-        <div id="whoami" class="row" style="align-items:center"></div>
+        <a href="../" class="ghost" style="text-decoration:none"><button class="ghost">← Back to Lobby</button></a>
       </div>
-      <small class="muted">Anyone can open this page, but writes still follow your database rules.</small>
     </section>
 
-    <!-- Admins -->
-    <section class="card">
-      <h2>Admins <span id="adminBadge" class="badge err">you are NOT admin</span></h2>
-      <div class="row">
-        <input id="adminUid" placeholder="UID to add/remove" style="min-width:320px;width:420px" />
-        <button id="addAdmin" class="primary">Add Admin</button>
-        <button id="remAdmin" class="ghost">Remove Admin</button>
-        <button id="refreshAdmins" class="ghost">Refresh</button>
-      </div>
-      <ul id="adminList"></ul>
-      <small class="muted">Admins are stored at <code>/admins/uids/{uid}: true</code>.</small>
-    </section>
-
-    <!-- Rooms -->
-    <section class="card">
-      <h2>Room Settings</h2>
-
-      <div class="row">
-        <div class="card" style="flex:1;min-width:280px">
-          <h2>Room 1</h2>
-          <div class="row">
-            <label><input type="checkbox" id="r1Private"> Private</label>
-          </div>
-          <div class="row" style="margin-top:6px">
-            <input id="r1Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1;min-width:220px" />
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="saveR1" class="primary">Save Room 1</button>
-            <button id="clearR1" class="ghost">Clear Password (Public)</button>
-          </div>
-          <small id="r1Status" class="muted"></small>
+    <!-- Admin view -->
+    <section id="adminWrap" style="display:none">
+      <section class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2>Welcome, <span id="whoami">Admin</span> <span class="badge ok">admin</span></h2>
+          <a href="../" class="ghost" style="text-decoration:none"><button class="ghost">← Back to Lobby</button></a>
         </div>
+        <small class="muted">Root admin (<code>gmolter8@gmail.com</code>) is permanently admin and cannot be banned or demoted by others.</small>
+      </section>
 
-        <div class="card" style="flex:1;min-width:280px">
-          <h2>Room 2</h2>
-          <div class="row">
-            <label><input type="checkbox" id="r2Private"> Private</label>
-          </div>
-          <div class="row" style="margin-top:6px">
-            <input id="r2Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1;min-width:220px" />
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="saveR2" class="primary">Save Room 2</button>
-            <button id="clearR2" class="ghost">Clear Password (Public)</button>
-          </div>
-          <small id="r2Status" class="muted"></small>
+      <!-- Search -->
+      <section class="card">
+        <h2>User Search</h2>
+        <div class="row">
+          <input id="q" placeholder="Search by email or nickname" style="min-width:260px;flex:1"/>
+          <button id="searchBtn" class="primary">Search</button>
+          <button id="refreshAll" class="ghost">Refresh All</button>
         </div>
-      </div>
+        <div id="results" class="grid" style="margin-top:10px"></div>
+        <small class="muted">Search results are from <code>/profiles</code>. Clicking actions below uses <code>/admins/uids</code> and <code>/bans/uids</code>.</small>
+      </section>
 
-      <small class="muted">Passwords are never exposed to clients on join; landing page verifies via a gated write.</small>
+      <!-- Rooms -->
+      <section class="card">
+        <h2>Room Settings</h2>
+        <div class="grid">
+          <div class="card">
+            <h2>Room 1</h2>
+            <div class="row"><label><input type="checkbox" id="r1Private"> Private</label></div>
+            <div class="row" style="margin-top:6px"><input id="r1Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1"/></div>
+            <div class="row" style="margin-top:8px">
+              <button id="saveR1" class="primary">Save Room 1</button>
+              <button id="clearR1" class="ghost">Clear Password (Public)</button>
+            </div>
+            <small id="r1Status" class="muted"></small>
+          </div>
+
+          <div class="card">
+            <h2>Room 2</h2>
+            <div class="row"><label><input type="checkbox" id="r2Private"> Private</label></div>
+            <div class="row" style="margin-top:6px"><input id="r2Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1"/></div>
+            <div class="row" style="margin-top:8px">
+              <button id="saveR2" class="primary">Save Room 2</button>
+              <button id="clearR2" class="ghost">Clear Password (Public)</button>
+            </div>
+            <small id="r2Status" class="muted"></small>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -94,8 +97,10 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-    import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
-    import { getDatabase, ref, get, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+    import { getDatabase, ref, get, set, update, remove } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+    const ROOT_EMAIL = "gmolter8@gmail.com";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
@@ -109,109 +114,135 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getDatabase(app, "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com/");
-
     const $ = q => document.querySelector(q);
     const toast = (t, ms=2600) => { const w=$("#toasts"); const d=document.createElement("div"); d.className="toast"; d.textContent=t; w.appendChild(d); setTimeout(()=>d.remove(), ms); };
 
-    // --- Auth UI ---
-    $("#googleBtn").onclick = async () => {
-      try { await signInWithPopup(auth, new GoogleAuthProvider()); }
-      catch(e){ toast(e.message || "Google sign-in failed"); }
-    };
-
-    let isAdmin = false;
+    // page mode: admin or not
     onAuthStateChanged(auth, async (u) => {
-      const who = $("#whoami");
-      if (!u) { who.textContent = "Not signed in"; $("#adminBadge").className = "badge err"; $("#adminBadge").textContent = "you are NOT admin"; return; }
-      who.textContent = `Signed in as ${u.email || u.uid}`;
-      // Live admin badge
-      onValue(ref(db, "admins/uids/" + u.uid), (s) => {
-        isAdmin = s.val() === true;
-        $("#adminBadge").className = "badge " + (isAdmin ? "ok" : "err");
-        $("#adminBadge").textContent = isAdmin ? "you are admin" : "you are NOT admin";
-      });
-      refreshAdmins();
-      loadRoom("room1");
-      loadRoom("room2");
+      // No sign-in UI here. If not authed, block page.
+      if (!u) { $("#blocked").style.display = ""; return; }
+
+      // Is admin? root email is always admin regardless of DB
+      let isAdmin = (u.email === ROOT_EMAIL);
+      if (!isAdmin) {
+        try {
+          const s = await get(ref(db, "admins/uids/" + u.uid));
+          isAdmin = s.val() === true;
+        } catch {}
+      }
+
+      if (!isAdmin) { $("#blocked").style.display = ""; return; }
+
+      // admin UI
+      $("#blocked").style.display = "none";
+      $("#adminWrap").style.display = "";
+      $("#whoami").textContent = u.email || u.uid;
+
+      // Load room settings summaries (no passwords shown)
+      await loadRoom("room1");
+      await loadRoom("room2");
+
+      // Search handlers
+      $("#searchBtn").onclick = searchProfiles;
+      $("#refreshAll").onclick = searchProfiles;
     });
 
-    // --- Admins section ---
-    async function refreshAdmins(){
+    // ---- Search ----
+    async function searchProfiles(){
+      const term = ($("#q").value || "").trim().toLowerCase();
+      const results = $("#results"); results.innerHTML = "";
       try{
-        const snap = await get(ref(db, "admins/uids"));
-        const list = $("#adminList"); list.innerHTML = "";
-        const val = snap.val() || {};
-        Object.keys(val).forEach(uid => {
-          const li = document.createElement("li");
-          li.textContent = uid;
-          list.appendChild(li);
-        });
-      }catch(e){ toast("Failed to load admins"); }
+        const snap = await get(ref(db, "profiles"));
+        const all = snap.val() || {};
+        const arr = Object.entries(all).map(([uid,p])=>({uid, email:p?.email||"", nickname:p?.nickname||p?.firstName||""}));
+        const filtered = term ? arr.filter(u => (u.email.toLowerCase().includes(term) || (u.nickname||"").toLowerCase().includes(term))) : arr.slice(0,12);
+        if(filtered.length===0){ results.innerHTML = "<small class='muted'>No users found.</small>"; return; }
+        for(const u of filtered){ results.appendChild(await renderUserCard(u)); }
+      }catch(e){ toast("Failed to search profiles"); }
     }
-    $("#refreshAdmins").onclick = refreshAdmins;
 
-    $("#addAdmin").onclick = async ()=>{
-      const uid = $("#adminUid").value.trim();
-      if(!uid) return toast("Enter a UID");
+    async function renderUserCard(user){
+      const card = document.createElement("div"); card.className="user-card";
+      const meta = document.createElement("div"); meta.className="user-meta";
+      meta.innerHTML = `
+        <div class="inline"><strong>${user.nickname || "(no nickname)"} </strong> <span class="dim">${user.email}</span></div>
+        <div class="dim">UID: ${user.uid}</div>
+      `;
+      const actions = document.createElement("div"); actions.className="row";
+      const btnAdd = btn("Add Admin","primary",()=> setAdmin(user.uid,true));
+      const btnRem = btn("Remove Admin","ghost",()=> setAdmin(user.uid,false));
+      const btnBan = btn("Ban","danger",()=> setBan(user.uid,true));
+      const btnUnb = btn("Unban","ghost",()=> setBan(user.uid,false));
+      actions.append(btnAdd,btnRem,btnBan,btnUnb);
+      card.append(meta,actions);
+      return card;
+    }
+    function btn(t,cls,fn){ const b=document.createElement("button"); b.textContent=t; b.className=cls; b.onclick=fn; return b; }
+
+    async function setAdmin(uid,val){
+      // prevent anyone except root from touching root admin account
       try{
-        await set(ref(db, "admins/uids/" + uid), true);
-        toast("Admin added");
-        refreshAdmins();
-      }catch(e){ toast(e.code === "PERMISSION_DENIED" ? "Not allowed" : (e.message || "Add failed")); }
-    };
-
-    $("#remAdmin").onclick = async ()=>{
-      const uid = $("#adminUid").value.trim();
-      if(!uid) return toast("Enter a UID");
+        const prof = await get(ref(db, "profiles/" + uid));
+        const email = (prof.val() && prof.val().email) || "";
+        if (email === ROOT_EMAIL && val === false){ toast("Root admin cannot be demoted."); return; }
+      }catch{}
       try{
-        await remove(ref(db, "admins/uids/" + uid));
-        toast("Admin removed");
-        refreshAdmins();
-      }catch(e){ toast(e.code === "PERMISSION_DENIED" ? "Not allowed" : (e.message || "Remove failed")); }
-    };
+        if(val) await set(ref(db, "admins/uids/" + uid), true);
+        else    await remove(ref(db, "admins/uids/" + uid));
+        toast(val?"Admin added":"Admin removed");
+      }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
+    }
 
-    // --- Rooms section ---
+    async function setBan(uid,val){
+      // cannot ban root
+      try{
+        const prof = await get(ref(db, "profiles/" + uid));
+        const email = (prof.val() && prof.val().email) || "";
+        if (email === ROOT_EMAIL){ toast("Root admin cannot be banned."); return; }
+      }catch{}
+      try{
+        if(val) await set(ref(db, "bans/uids/" + uid), true);
+        else    await remove(ref(db, "bans/uids/" + uid));
+        toast(val?"User banned":"User unbanned");
+      }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
+    }
+
+    // ---- Rooms ----
     function bindRoomControls(room, chkId, pwdId, saveBtnId, clearBtnId, statusId){
-      $(saveBtnId).onclick = async ()=>{
-        const priv = $(chkId).checked;
-        const pwd  = $(pwdId).value.trim();
+      document.querySelector(saveBtnId).onclick = async ()=>{
+        const priv = document.querySelector(chkId).checked;
+        const pwd  = document.querySelector(pwdId).value.trim();
         const updates = { private: !!priv };
-        if (pwd.length > 0) updates.password = pwd; // keep existing if left blank
+        if (pwd.length > 0) updates.password = pwd;
         try{
           await update(ref(db, `rooms/${room}/settings`), updates);
-          $(statusId).textContent = "Saved ✓";
-          toast(`${room} saved`);
-          $(pwdId).value = "";
-        }catch(e){ $(statusId).textContent = "Save failed"; toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Save failed")); }
+          document.querySelector(statusId).textContent = "Saved ✓";
+          document.querySelector(pwdId).value = "";
+        }catch(e){ document.querySelector(statusId).textContent = "Save failed"; }
       };
-      $(clearBtnId).onclick = async ()=>{
+      document.querySelector(clearBtnId).onclick = async ()=>{
         try{
           await update(ref(db, `rooms/${room}/settings`), { private: false, password: null });
-          $(chkId).checked = false; $(pwdId).value = "";
-          $(statusId).textContent = "Password cleared (public)";
-          toast(`${room} is now public`);
-        }catch(e){ $(statusId).textContent = "Clear failed"; toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Clear failed")); }
+          document.querySelector(chkId).checked = false;
+          document.querySelector(pwdId).value = "";
+          document.querySelector(statusId).textContent = "Password cleared (public)";
+        }catch(e){ document.querySelector(statusId).textContent = "Clear failed"; }
       };
     }
 
-    function loadRoom(room){
+    async function loadRoom(room){
       const map = {
         "room1": { chk:"#r1Private", pwd:"#r1Pwd", save:"#saveR1", clear:"#clearR1", stat:"#r1Status" },
         "room2": { chk:"#r2Private", pwd:"#r2Pwd", save:"#saveR2", clear:"#clearR2", stat:"#r2Status" }
       }[room];
-
-      // Bind buttons once
       bindRoomControls(room, map.chk, map.pwd, map.save, map.clear, map.stat);
-
-      // Populate current settings (readable only to admins; others will see nothing but can still attempt updates)
-      get(ref(db, `rooms/${room}/settings`)).then(s=>{
+      try{
+        const s = await get(ref(db, `rooms/${room}/settings`));
         const v = s.val() || {};
-        if (typeof v.private === "boolean") $(map.chk).checked = v.private;
-        // Never show password value (remains unread)
-        $(map.stat).textContent = v.private ? "Currently private" : "Currently public";
-      }).catch(()=>{ $(map.stat).textContent = "Could not read settings (normal if not admin)"; });
+        if (typeof v.private === "boolean") document.querySelector(map.chk).checked = v.private;
+        document.querySelector(map.stat).textContent = v.private ? "Currently private" : "Currently public";
+      }catch{}
     }
-
   </script>
 </body>
 </html>
