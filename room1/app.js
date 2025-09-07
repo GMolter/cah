@@ -25,22 +25,22 @@ let me = null;
 let hb = null;
 let lastRoster = new Set();
 
-/* ========== Auth bootstrap ========== */
+/* ===== Auth bootstrap ===== */
 onAuthStateChanged(auth, async (u) => {
   if (!u) { location.href = "../"; return; }
   me = u;
   console.log("[auth] uid:", me.uid);
 
-  // Attach listeners first so UI updates regardless of join timing.
+  // Start listeners first so UI always renders
   watchPlayers();
   watchChat();
   startHeartbeat();
 
-  // Then try to create/refresh our seat.
+  // Create/refresh our seat
   await joinSeatMinimal();
 });
 
-/* ========== Minimal, robust join ========== */
+/* ===== Minimal join (no /count writes) ===== */
 async function joinSeatMinimal() {
   const uid = me.uid;
 
@@ -58,11 +58,10 @@ async function joinSeatMinimal() {
   const now = Date.now();
 
   const seatRef = ref(db, `rooms/${ROOM}/players/${uid}`);
-  const seat = { nickname, photoURL, joinedAt: now, lastSeen: now, status: "online" };
+  const seatObj = { nickname, photoURL, joinedAt: now, lastSeen: now, status: "online" };
 
   try {
-    // Always write full object (overwrite if existed). This avoids any race/rollback.
-    await set(seatRef, seat);
+    await set(seatRef, seatObj);               // overwrite or create
     onDisconnect(seatRef).update({ status: "offline", lastSeen: Date.now() }).catch(()=>{});
     console.log("[seat] set OK for", uid);
   } catch (e) {
@@ -71,7 +70,7 @@ async function joinSeatMinimal() {
   }
 }
 
-/* ========== Leave (no sign-out, no count ops) ========== */
+/* ===== Leave (no sign-out, no /count) ===== */
 $("#leaveBtn").onclick = async () => {
   if (!me) return;
   try {
@@ -82,24 +81,24 @@ $("#leaveBtn").onclick = async () => {
   location.href = "../";
 };
 
-/* ========== Heartbeat every 15s ========== */
+/* ===== Heartbeat ===== */
 function startHeartbeat() {
   clearInterval(hb);
   hb = setInterval(() => {
     if (!me) return;
     update(ref(db, `rooms/${ROOM}/players/${me.uid}`), {
       lastSeen: Date.now(), status: "online"
-    }).catch(()=>{});
+    }).catch((e)=>console.warn("[heartbeat] warn:", e?.message || e));
   }, 15000);
 }
 
-/* ========== Scoreboard (pure reflect of DB) ========== */
+/* ===== Scoreboard ===== */
 function watchPlayers() {
   const playersRef = ref(db, `rooms/${ROOM}/players`);
   onValue(playersRef, (snap) => {
     const rows = [];
     snap.forEach((ch) => rows.push({ id: ch.key, ...ch.val() }));
-    rows.sort((a,b) => (a.joinedAt||0)-(b.joinedAt||0));
+    rows.sort((a,b) => (a.joinedAt||0) - (b.joinedAt||0));
 
     $("#playerCount").textContent = rows.length;
 
@@ -112,21 +111,14 @@ function watchPlayers() {
       return `<li><img src="${avatar}" alt=""><span>${name}</span></li>`;
     }).join("");
 
-    // Local toasts by diff (no DB side-effects)
-    const current = new Set(rows.map(r => r.id));
-    for (const id of current) if (!lastRoster.has(id)) toast(`${nameFor(id, rows)} joined`, 2500);
-    for (const id of lastRoster) if (!current.has(id)) toast(`${nameFor(id, rows, "User")} left`, 2500);
-    lastRoster = current;
-
-    console.log("[players] render =>", rows.length, rows.map(r=>r.id));
+    const ids = rows.map(r=>r.id);
+    console.log("[players] render =>", rows.length, ids);
   }, (err) => {
     console.error("[players] onValue ERROR =>", err?.message || err);
   });
 }
 
-function nameFor(id, list, fallback="User"){ const f=list.find(x=>x.id===id); return f?.nickname || fallback; }
-
-/* ========== Chat (unchanged; only real messages in DB) ========== */
+/* ===== Chat ===== */
 $("#chatForm").onsubmit = async (e) => {
   e.preventDefault();
   const input = $("#chatInput");
@@ -136,7 +128,8 @@ $("#chatForm").onsubmit = async (e) => {
   try { const p = await get(ref(db, `profiles/${me.uid}`)); prof = p.val() || {}; } catch {}
   try {
     await push(ref(db, `rooms/${ROOM}/chat`), {
-      uid: me.uid, nickname: prof.nickname || prof.firstName || "User",
+      uid: me.uid,
+      nickname: prof.nickname || prof.firstName || "User",
       text, type: "message", ts: Date.now()
     });
     input.value = "";
@@ -159,7 +152,7 @@ function watchChat() {
   }, (err)=>console.error("[chat onValue] ERROR =>", err?.message || err));
 }
 
-/* ========== Transient toast (no DB) ========== */
+/* ===== Transient toast (UI only) ===== */
 function toast(text, ms=4000){
   const wrap = document.querySelector("#toasts"); if(!wrap) return;
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
