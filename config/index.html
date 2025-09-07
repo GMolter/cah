@@ -18,10 +18,11 @@
     .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 8px 28px rgba(0,0,0,.45);margin:12px 0}
     input,button,textarea{font:inherit}
     input,textarea{padding:10px;border-radius:10px;border:1px solid var(--ring);background:#0b0b0b;color:#fff}
-    textarea{min-height:120px;resize:vertical}
+    textarea{min-height:180px;resize:vertical}
     button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
     button.primary{background:#fff;color:#000} button.ghost{background:#1f1f1f;color:#fff}
     button.danger{background:var(--accent);color:#fff}
+    button.mini{padding:6px 10px;border-radius:8px;font-weight:700;font-size:12px}
     small.muted{color:var(--muted)}
     .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
     .toast{background:#1a1a1a;color:#e6e6e6;padding:10px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -42,17 +43,19 @@
     /* Modal */
     .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
     .modal.show{display:flex}
-    .modal-card{width:min(92vw,720px);background:#151515;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:pop .15s ease-out}
+    .modal-card{width:min(92vw,760px);background:#151515;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:pop .15s ease-out}
     @keyframes pop{from{transform:scale(.97);opacity:.8}to{transform:scale(1);opacity:1}}
-    .modal-grid{display:grid;grid-template-columns:220px 1fr;gap:14px}
-    @media (max-width:720px){.modal-grid{grid-template-columns:1fr}}
-    .statusCol{display:flex;flex-direction:column;gap:10px}
-    .statusBadge{display:flex;align-items:center;gap:10px;background:#101010;border:1px solid #242424;border-radius:12px;padding:12px}
+    .modal-grid{display:grid;grid-template-columns:240px 1fr;gap:16px}
+    @media (max-width:760px){.modal-grid{grid-template-columns:1fr}}
+    .statusCol{display:flex;flex-direction:column;gap:12px}
+    .statusBadge{display:flex;align-items:center;gap:12px;background:#101010;border:1px solid #242424;border-radius:12px;padding:14px}
     .statusBadge .label{font-size:13px;color:#bcbcbc}
-    .statusBadge .value{font-size:16px;font-weight:700}
-    .statusBadge .icon{font-size:20px}
+    .statusBadge .value{font-size:16px;font-weight:800}
+    .statusBadge .icon{font-size:22px}
     .muted{color:#a8a8a8}
-    .headerLine{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+    .headerLine{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+    .nameLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .notesWrap{display:flex;flex-direction:column;gap:6px}
   </style>
 </head>
 <body>
@@ -123,7 +126,10 @@
     <div class="modal-card">
       <div class="headerLine">
         <div>
-          <div id="m_name" style="font-weight:800;font-size:18px"></div>
+          <div class="nameLine">
+            <div id="m_name" style="font-weight:800;font-size:18px"></div>
+            <button id="m_editName" class="mini ghost" title="Change nickname">Edit Name</button>
+          </div>
           <div class="muted" id="m_email"></div>
           <div class="muted" id="m_uid" style="margin-top:4px"></div>
         </div>
@@ -151,11 +157,12 @@
 
         <!-- Right: actions + notes -->
         <div>
-          <div class="row" id="m_actions" style="margin-bottom:10px"></div>
-          <div>
-            <label class="muted">Notes</label>
+          <div class="row" id="m_actions" style="margin-bottom:12px"></div>
+
+          <div class="notesWrap">
+            <label class="muted" for="m_notes">Notes</label>
             <textarea id="m_notes" placeholder="Private admin notes about this user (e.g., why they were banned)"></textarea>
-            <div class="row" style="justify-content:flex-end;margin-top:8px">
+            <div class="row" style="justify-content:flex-end">
               <button id="m_saveNotes" class="primary">Save Notes</button>
             </div>
           </div>
@@ -205,7 +212,7 @@
       // wire search (live) + list + rooms
       $("#searchBtn").onclick = search;
       $("#refreshBtn").onclick = search;
-      $("#q").addEventListener("input", debounce(search, 180)); // LIVE REFRESH
+      $("#q").addEventListener("input", debounce(search, 160)); // LIVE REFRESH
       await search();
       await loadRoom("room1");
       await loadRoom("room2");
@@ -288,12 +295,28 @@
         const isBanned = bSnap.val() === true;
 
         // Fill fields
-        $("#m_name").textContent = p.nickname || p.firstName || "(no nickname)";
+        const nickname = p.nickname || p.firstName || "(no nickname)";
+        $("#m_name").textContent = nickname;
         $("#m_email").textContent = p.email || "";
         $("#m_uid").textContent = "UID: " + uid;
         $("#m_isAdmin").textContent = isAdmin ? "yes" : "no";
         $("#m_isBanned").textContent = isBanned ? "yes" : "no";
         $("#m_notes").value = p.notes || "";
+
+        // Edit name handler (prompt for simplicity)
+        $("#m_editName").onclick = async ()=>{
+          const current = nickname === "(no nickname)" ? "" : nickname;
+          const newName = prompt("Enter new nickname", current);
+          if(newName===null) return;
+          const trimmed = newName.trim().slice(0,40);
+          if(!trimmed){ toast("Nickname cannot be empty."); return; }
+          try{
+            await update(ref(db,"profiles/"+uid), { nickname: trimmed });
+            toast("Nickname updated");
+            $("#m_name").textContent = trimmed;
+            await search(); // refresh list
+          }catch(e){ toast("Failed to update nickname"); }
+        };
 
         // Actions
         const actions = $("#m_actions"); actions.innerHTML = "";
