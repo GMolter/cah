@@ -9,7 +9,7 @@ button{background:#fff;color:#000;border:0;border-radius:10px;padding:8px 12px;f
 button:active{transform:translateY(1px)}
 button.danger{background:#b4002b;color:#fff}
 
-/* 3-col: chat fixed left (320), scoreboard fixed right (280) */
+/* 3-col: chat left (320), scoreboard right (280) */
 .grid.three{display:grid;grid-template-columns:320px minmax(0,1fr) 280px;gap:16px;align-items:start;width:100%}
 .gutter{min-height:360px}
 @media (max-width:1100px){.grid.three{grid-template-columns:1fr}.gutter{display:none}}
@@ -22,15 +22,14 @@ button.danger{background:#b4002b;color:#fff}
 .chat-msg{padding:6px 8px;border-radius:8px;max-width:92%}
 .chat-msg.self{background:#1e1e1e;align-self:flex-end}
 .chat-msg.other{background:#2a2a2a;align-self:flex-start}
-.chat-msg.system{color:var(--muted);font-size:.85rem;align-self:center;background:none}
 
-/* Scoreboard (compact right) */
+/* Scoreboard */
 .scoreboard{min-width:240px}
 .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .scoreboard ul{list-style:none;padding:0;margin:0}
 .scoreboard li{padding:8px 0;border-bottom:1px solid #222;display:flex;align-items:center;gap:10px}
 .scoreboard img{width:28px;height:28px;border-radius:50%}
 
-/* transient toasts */
+/* Toasts */
 .toasts{position:fixed;left:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:5}
-.toast{background:#1c1c1c;color:#e0e0e0;padding:8px 12px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.45);opacity:.92}
+.toast{background:#1c1c1c;color:#e0e0e0;padding:8px 12px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.45);opacity:.95}
