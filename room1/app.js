@@ -1,8 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 import {
-  getDatabase, ref, get, set, update,
-  onValue, push, onDisconnect
+  getDatabase, ref, get, set, update, onValue, push, onDisconnect
 } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
 /* Firebase */
@@ -23,7 +22,6 @@ const $ = (q) => document.querySelector(q);
 
 let me = null;
 let hb = null;
-let lastRoster = new Set();
 
 /* ===== Auth bootstrap ===== */
 onAuthStateChanged(auth, async (u) => {
@@ -31,24 +29,22 @@ onAuthStateChanged(auth, async (u) => {
   me = u;
   console.log("[auth] uid:", me.uid);
 
-  // Start listeners first so UI always renders
-  watchPlayers();
+  watchPlayers();   // attach listeners first
   watchChat();
   startHeartbeat();
 
-  // Create/refresh our seat
-  await joinSeatMinimal();
+  await joinSeatMerge();  // then create/refresh our seat
 });
 
-/* ===== Minimal join (no /count writes) ===== */
-async function joinSeatMinimal() {
+/* ===== Seat create/refresh using ROOT update() (merge-safe) ===== */
+async function joinSeatMerge() {
   const uid = me.uid;
 
-  // profile
+  // profile lookup (best effort)
   let prof = {};
   try {
-    const p = await get(ref(db, `profiles/${uid}`));
-    prof = p.val() || {};
+    const ps = await get(ref(db, `profiles/${uid}`));
+    prof = ps.val() || {};
   } catch (e) {
     console.warn("[profile] read warn:", e?.message || e);
   }
@@ -57,20 +53,25 @@ async function joinSeatMinimal() {
   const photoURL = prof.photoURL || "../assets/default-avatar.png";
   const now = Date.now();
 
-  const seatRef = ref(db, `rooms/${ROOM}/players/${uid}`);
-  const seatObj = { nickname, photoURL, joinedAt: now, lastSeen: now, status: "online" };
+  // merge-only write at parent via root update
+  const updates = {};
+  updates[`rooms/${ROOM}/players/${uid}`] = {
+    nickname, photoURL, joinedAt: now, lastSeen: now, status: "online"
+  };
 
   try {
-    await set(seatRef, seatObj);               // overwrite or create
-    onDisconnect(seatRef).update({ status: "offline", lastSeen: Date.now() }).catch(()=>{});
-    console.log("[seat] set OK for", uid);
+    await update(ref(db), updates);  // cannot clobber siblings
+    onDisconnect(ref(db, `rooms/${ROOM}/players/${uid}`))
+      .update({ status: "offline", lastSeen: Date.now() })
+      .catch(()=>{});
+    console.log("[seat] merge set OK for", uid);
   } catch (e) {
-    console.error("[seat] set FAILED:", e?.message || e);
+    console.error("[seat] merge set FAILED:", e?.message || e);
     toast("Couldn’t join the room (permissions).", 4000);
   }
 }
 
-/* ===== Leave (no sign-out, no /count) ===== */
+/* ===== Leave (no sign-out) ===== */
 $("#leaveBtn").onclick = async () => {
   if (!me) return;
   try {
@@ -96,8 +97,8 @@ function startHeartbeat() {
 function watchPlayers() {
   const playersRef = ref(db, `rooms/${ROOM}/players`);
   onValue(playersRef, (snap) => {
-    const rows = [];
-    snap.forEach((ch) => rows.push({ id: ch.key, ...ch.val() }));
+    const raw = snap.val() || {};
+    const rows = Object.entries(raw).map(([id, v]) => ({ id, ...v }));
     rows.sort((a,b) => (a.joinedAt||0) - (b.joinedAt||0));
 
     $("#playerCount").textContent = rows.length;
@@ -111,7 +112,8 @@ function watchPlayers() {
       return `<li><img src="${avatar}" alt=""><span>${name}</span></li>`;
     }).join("");
 
-    const ids = rows.map(r=>r.id);
+    const ids = rows.map(r => r.id);
+    console.log("[players] KEYS =>", Object.keys(raw));
     console.log("[players] render =>", rows.length, ids);
   }, (err) => {
     console.error("[players] onValue ERROR =>", err?.message || err);
@@ -152,7 +154,7 @@ function watchChat() {
   }, (err)=>console.error("[chat onValue] ERROR =>", err?.message || err));
 }
 
-/* ===== Transient toast (UI only) ===== */
+/* ===== Transient toast (no DB) ===== */
 function toast(text, ms=4000){
   const wrap = document.querySelector("#toasts"); if(!wrap) return;
   const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
