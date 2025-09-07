@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CAH Config</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{--bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;--ok:#15c27f;--err:#ff6b6b}
+    *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
+    main{max-width:980px;margin:24px auto;padding:0 16px}
+    h1{margin:0 0 12px} h2{margin:0 0 12px;font-size:18px}
+    .row{display:flex;gap:8px;flex-wrap:wrap}
+    .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 8px 28px rgba(0,0,0,.45);margin:12px 0}
+    input,button{font:inherit}
+    input{padding:10px;border-radius:10px;border:1px solid var(--ring);background:#0b0b0b;color:#fff}
+    input[readonly]{opacity:.8}
+    button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+    button.primary{background:#fff;color:#000} button.ghost{background:#1f1f1f;color:#fff}
+    small.muted{color:var(--muted)} .badge{padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px}
+    .ok{background:rgba(21,194,127,.12);color:#7ef1c1} .err{background:rgba(255,107,107,.12);color:#ffc9c9}
+    ul{margin:8px 0 0;padding:0;list-style:none} li{padding:8px 0;border-bottom:1px solid #1f1f1f}
+    .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
+    .toast{background:#1a1a1a;color:#e6e6e6;padding:10px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>CAH Config</h1>
+
+    <!-- Auth -->
+    <section class="card">
+      <h2>Sign in</h2>
+      <div class="row">
+        <button id="googleBtn" class="primary">Continue with Google</button>
+        <div id="whoami" class="row" style="align-items:center"></div>
+      </div>
+      <small class="muted">Anyone can open this page, but writes still follow your database rules.</small>
+    </section>
+
+    <!-- Admins -->
+    <section class="card">
+      <h2>Admins <span id="adminBadge" class="badge err">you are NOT admin</span></h2>
+      <div class="row">
+        <input id="adminUid" placeholder="UID to add/remove" style="min-width:320px;width:420px" />
+        <button id="addAdmin" class="primary">Add Admin</button>
+        <button id="remAdmin" class="ghost">Remove Admin</button>
+        <button id="refreshAdmins" class="ghost">Refresh</button>
+      </div>
+      <ul id="adminList"></ul>
+      <small class="muted">Admins are stored at <code>/admins/uids/{uid}: true</code>.</small>
+    </section>
+
+    <!-- Rooms -->
+    <section class="card">
+      <h2>Room Settings</h2>
+
+      <div class="row">
+        <div class="card" style="flex:1;min-width:280px">
+          <h2>Room 1</h2>
+          <div class="row">
+            <label><input type="checkbox" id="r1Private"> Private</label>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <input id="r1Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1;min-width:220px" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="saveR1" class="primary">Save Room 1</button>
+            <button id="clearR1" class="ghost">Clear Password (Public)</button>
+          </div>
+          <small id="r1Status" class="muted"></small>
+        </div>
+
+        <div class="card" style="flex:1;min-width:280px">
+          <h2>Room 2</h2>
+          <div class="row">
+            <label><input type="checkbox" id="r2Private"> Private</label>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <input id="r2Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1;min-width:220px" />
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="saveR2" class="primary">Save Room 2</button>
+            <button id="clearR2" class="ghost">Clear Password (Public)</button>
+          </div>
+          <small id="r2Status" class="muted"></small>
+        </div>
+      </div>
+
+      <small class="muted">Passwords are never exposed to clients on join; landing page verifies via a gated write.</small>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+    import { getDatabase, ref, get, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
+      authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
+      projectId: "olio-cardsagainsthumanity",
+      storageBucket: "olio-cardsagainsthumanity.firebasestorage.app",
+      messagingSenderId: "256442998757",
+      appId: "1:256442998757:web:ab26e55db0b5029879990c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app, "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com/");
+
+    const $ = q => document.querySelector(q);
+    const toast = (t, ms=2600) => { const w=$("#toasts"); const d=document.createElement("div"); d.className="toast"; d.textContent=t; w.appendChild(d); setTimeout(()=>d.remove(), ms); };
+
+    // --- Auth UI ---
+    $("#googleBtn").onclick = async () => {
+      try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+      catch(e){ toast(e.message || "Google sign-in failed"); }
+    };
+
+    let isAdmin = false;
+    onAuthStateChanged(auth, async (u) => {
+      const who = $("#whoami");
+      if (!u) { who.textContent = "Not signed in"; $("#adminBadge").className = "badge err"; $("#adminBadge").textContent = "you are NOT admin"; return; }
+      who.textContent = `Signed in as ${u.email || u.uid}`;
+      // Live admin badge
+      onValue(ref(db, "admins/uids/" + u.uid), (s) => {
+        isAdmin = s.val() === true;
+        $("#adminBadge").className = "badge " + (isAdmin ? "ok" : "err");
+        $("#adminBadge").textContent = isAdmin ? "you are admin" : "you are NOT admin";
+      });
+      refreshAdmins();
+      loadRoom("room1");
+      loadRoom("room2");
+    });
+
+    // --- Admins section ---
+    async function refreshAdmins(){
+      try{
+        const snap = await get(ref(db, "admins/uids"));
+        const list = $("#adminList"); list.innerHTML = "";
+        const val = snap.val() || {};
+        Object.keys(val).forEach(uid => {
+          const li = document.createElement("li");
+          li.textContent = uid;
+          list.appendChild(li);
+        });
+      }catch(e){ toast("Failed to load admins"); }
+    }
+    $("#refreshAdmins").onclick = refreshAdmins;
+
+    $("#addAdmin").onclick = async ()=>{
+      const uid = $("#adminUid").value.trim();
+      if(!uid) return toast("Enter a UID");
+      try{
+        await set(ref(db, "admins/uids/" + uid), true);
+        toast("Admin added");
+        refreshAdmins();
+      }catch(e){ toast(e.code === "PERMISSION_DENIED" ? "Not allowed" : (e.message || "Add failed")); }
+    };
+
+    $("#remAdmin").onclick = async ()=>{
+      const uid = $("#adminUid").value.trim();
+      if(!uid) return toast("Enter a UID");
+      try{
+        await remove(ref(db, "admins/uids/" + uid));
+        toast("Admin removed");
+        refreshAdmins();
+      }catch(e){ toast(e.code === "PERMISSION_DENIED" ? "Not allowed" : (e.message || "Remove failed")); }
+    };
+
+    // --- Rooms section ---
+    function bindRoomControls(room, chkId, pwdId, saveBtnId, clearBtnId, statusId){
+      $(saveBtnId).onclick = async ()=>{
+        const priv = $(chkId).checked;
+        const pwd  = $(pwdId).value.trim();
+        const updates = { private: !!priv };
+        if (pwd.length > 0) updates.password = pwd; // keep existing if left blank
+        try{
+          await update(ref(db, `rooms/${room}/settings`), updates);
+          $(statusId).textContent = "Saved ✓";
+          toast(`${room} saved`);
+          $(pwdId).value = "";
+        }catch(e){ $(statusId).textContent = "Save failed"; toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Save failed")); }
+      };
+      $(clearBtnId).onclick = async ()=>{
+        try{
+          await update(ref(db, `rooms/${room}/settings`), { private: false, password: null });
+          $(chkId).checked = false; $(pwdId).value = "";
+          $(statusId).textContent = "Password cleared (public)";
+          toast(`${room} is now public`);
+        }catch(e){ $(statusId).textContent = "Clear failed"; toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Clear failed")); }
+      };
+    }
+
+    function loadRoom(room){
+      const map = {
+        "room1": { chk:"#r1Private", pwd:"#r1Pwd", save:"#saveR1", clear:"#clearR1", stat:"#r1Status" },
+        "room2": { chk:"#r2Private", pwd:"#r2Pwd", save:"#saveR2", clear:"#clearR2", stat:"#r2Status" }
+      }[room];
+
+      // Bind buttons once
+      bindRoomControls(room, map.chk, map.pwd, map.save, map.clear, map.stat);
+
+      // Populate current settings (readable only to admins; others will see nothing but can still attempt updates)
+      get(ref(db, `rooms/${room}/settings`)).then(s=>{
+        const v = s.val() || {};
+        if (typeof v.private === "boolean") $(map.chk).checked = v.private;
+        // Never show password value (remains unread)
+        $(map.stat).textContent = v.private ? "Currently private" : "Currently public";
+      }).catch(()=>{ $(map.stat).textContent = "Could not read settings (normal if not admin)"; });
+    }
+
+  </script>
+</body>
+</html>
