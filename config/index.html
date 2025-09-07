@@ -18,7 +18,7 @@
     .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 8px 28px rgba(0,0,0,.45);margin:12px 0}
     input,button,textarea{font:inherit}
     input,textarea{padding:10px;border-radius:10px;border:1px solid var(--ring);background:#0b0b0b;color:#fff}
-    textarea{min-height:110px;resize:vertical}
+    textarea{min-height:120px;resize:vertical}
     button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
     button.primary{background:#fff;color:#000} button.ghost{background:#1f1f1f;color:#fff}
     button.danger{background:var(--accent);color:#fff}
@@ -26,9 +26,9 @@
     .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
     .toast{background:#1a1a1a;color:#e6e6e6;padding:10px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
     /* Search panel */
-    .searchWrap{display:grid;grid-template-columns:300px 1fr;gap:14px}
+    .searchWrap{display:grid;grid-template-columns:320px 1fr;gap:14px}
     @media (max-width:900px){.searchWrap{grid-template-columns:1fr}}
-    .list{background:#101010;border:1px solid #1a1a1a;border-radius:12px;max-height:420px;overflow:auto}
+    .list{background:#101010;border:1px solid #1a1a1a;border-radius:12px;max-height:460px;overflow:auto}
     .item{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #1a1a1a;cursor:pointer;transition:background .15s}
     .item:hover{background:#131313}
     .meta{display:flex;flex-direction:column;gap:3px}
@@ -42,10 +42,17 @@
     /* Modal */
     .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
     .modal.show{display:flex}
-    .modal-card{width:min(92vw,620px);background:#151515;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:pop .15s ease-out}
+    .modal-card{width:min(92vw,720px);background:#151515;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:pop .15s ease-out}
     @keyframes pop{from{transform:scale(.97);opacity:.8}to{transform:scale(1);opacity:1}}
-    .user-head{display:flex;justify-content:space-between;align-items:center}
+    .modal-grid{display:grid;grid-template-columns:220px 1fr;gap:14px}
+    @media (max-width:720px){.modal-grid{grid-template-columns:1fr}}
+    .statusCol{display:flex;flex-direction:column;gap:10px}
+    .statusBadge{display:flex;align-items:center;gap:10px;background:#101010;border:1px solid #242424;border-radius:12px;padding:12px}
+    .statusBadge .label{font-size:13px;color:#bcbcbc}
+    .statusBadge .value{font-size:16px;font-weight:700}
+    .statusBadge .icon{font-size:20px}
     .muted{color:#a8a8a8}
+    .headerLine{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   </style>
 </head>
 <body>
@@ -68,7 +75,6 @@
           <h2>Welcome, <span id="whoami">Admin</span></h2>
           <a href="../" class="ghost" style="text-decoration:none"><button class="ghost">← Back to Lobby</button></a>
         </div>
-        <small class="muted">Root admin (<code>gmolter8@gmail.com</code>) is permanently admin and cannot be banned or demoted by others.</small>
       </section>
 
       <section class="card">
@@ -77,7 +83,7 @@
           <!-- Left: list -->
           <div>
             <div class="row">
-              <input id="q" placeholder="Search email or nickname" style="flex:1;min-width:220px">
+              <input id="q" placeholder="Search email or nickname" style="flex:1;min-width:240px">
               <button id="searchBtn" class="primary">Search</button>
               <button id="refreshBtn" class="ghost">Refresh</button>
             </div>
@@ -115,29 +121,47 @@
   <!-- User modal -->
   <div id="userModal" class="modal">
     <div class="modal-card">
-      <div class="user-head">
-        <h2 id="m_name"></h2>
+      <div class="headerLine">
+        <div>
+          <div id="m_name" style="font-weight:800;font-size:18px"></div>
+          <div class="muted" id="m_email"></div>
+          <div class="muted" id="m_uid" style="margin-top:4px"></div>
+        </div>
         <button id="m_close" class="ghost">Close</button>
       </div>
-      <div class="muted" id="m_email"></div>
-      <div class="muted" id="m_uid" style="margin:6px 0 10px"></div>
 
-      <div class="row" style="margin:4px 0 10px">
-        <span id="m_isAdmin" class="chip">Admin: no</span>
-        <span id="m_isBanned" class="chip">Banned: no</span>
-      </div>
+      <div class="modal-grid">
+        <!-- Left: vertical status -->
+        <div class="statusCol">
+          <div class="statusBadge">
+            <div class="icon">👑</div>
+            <div>
+              <div class="label">Admin</div>
+              <div id="m_isAdmin" class="value">no</div>
+            </div>
+          </div>
+          <div class="statusBadge">
+            <div class="icon">🚫</div>
+            <div>
+              <div class="label">Banned</div>
+              <div id="m_isBanned" class="value">no</div>
+            </div>
+          </div>
+        </div>
 
-      <div class="row" id="m_actions" style="margin-bottom:10px">
-        <!-- buttons injected based on state -->
-      </div>
-
-      <div>
-        <label class="muted">Notes</label>
-        <textarea id="m_notes" placeholder="Private admin notes about this user (e.g., why they were banned)"></textarea>
-        <div class="row" style="justify-content:flex-end;margin-top:8px">
-          <button id="m_saveNotes" class="primary">Save Notes</button>
+        <!-- Right: actions + notes -->
+        <div>
+          <div class="row" id="m_actions" style="margin-bottom:10px"></div>
+          <div>
+            <label class="muted">Notes</label>
+            <textarea id="m_notes" placeholder="Private admin notes about this user (e.g., why they were banned)"></textarea>
+            <div class="row" style="justify-content:flex-end;margin-top:8px">
+              <button id="m_saveNotes" class="primary">Save Notes</button>
+            </div>
+          </div>
         </div>
       </div>
+
     </div>
   </div>
 
@@ -178,9 +202,10 @@
       $("#adminWrap").style.display = "";
       $("#whoami").textContent = u.email || u.uid;
 
-      // wire search + list + rooms
+      // wire search (live) + list + rooms
       $("#searchBtn").onclick = search;
       $("#refreshBtn").onclick = search;
+      $("#q").addEventListener("input", debounce(search, 180)); // LIVE REFRESH
       await search();
       await loadRoom("room1");
       await loadRoom("room2");
@@ -266,10 +291,8 @@
         $("#m_name").textContent = p.nickname || p.firstName || "(no nickname)";
         $("#m_email").textContent = p.email || "";
         $("#m_uid").textContent = "UID: " + uid;
-        $("#m_isAdmin").textContent = "Admin: " + (isAdmin ? "yes" : "no");
-        $("#m_isBanned").textContent = "Banned: " + (isBanned ? "yes" : "no");
-
-        // Notes
+        $("#m_isAdmin").textContent = isAdmin ? "yes" : "no";
+        $("#m_isBanned").textContent = isBanned ? "yes" : "no";
         $("#m_notes").value = p.notes || "";
 
         // Actions
@@ -290,7 +313,6 @@
           actions.appendChild(note);
         }
 
-        // Save notes
         $("#m_saveNotes").onclick = async ()=>{
           try{
             await update(ref(db,"profiles/"+uid), { notes: $("#m_notes").value });
@@ -298,7 +320,6 @@
           }catch(e){ toast("Failed to save notes"); }
         };
 
-        // Show modal
         $("#userModal").classList.add("show");
         $("#m_close").onclick = ()=> $("#userModal").classList.remove("show");
       }catch(e){ toast("Failed to open user"); }
@@ -309,31 +330,27 @@
 
     async function setAdmin(uid,val){
       try{
-        // prevent demoting root
         const prof = await get(ref(db,"profiles/"+uid));
-        if ((prof.val()?.email) === ROOT_EMAIL && val === false){
+        if ((prof.val()?.email) === "gmolter8@gmail.com" && val === false){
           toast("Root admin cannot be demoted."); return;
         }
         if(val) await set(ref(db,"admins/uids/"+uid), true);
         else await remove(ref(db,"admins/uids/"+uid));
         toast(val?"Admin added":"Admin removed");
-        await search(); // refresh crowns
-        $("#userModal").classList.remove("show");
+        await search(); $("#userModal").classList.remove("show");
       }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
     }
 
     async function setBan(uid,val){
       try{
-        // cannot ban root
         const prof = await get(ref(db,"profiles/"+uid));
-        if ((prof.val()?.email) === ROOT_EMAIL){
+        if ((prof.val()?.email) === "gmolter8@gmail.com"){
           toast("Root admin cannot be banned."); return;
         }
         if(val) await set(ref(db,"bans/uids/"+uid), true);
         else await remove(ref(db,"bans/uids/"+uid));
         toast(val?"User banned":"User unbanned");
-        await search(); // refresh badges
-        $("#userModal").classList.remove("show");
+        await search(); $("#userModal").classList.remove("show");
       }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
     }
 
@@ -373,6 +390,9 @@
         document.querySelector(map.stat).textContent = v.private ? "Currently private" : "Currently public";
       }catch{}
     }
+
+    // small debounce helper for live search
+    function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
   </script>
 </body>
 </html>
