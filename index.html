@@ -1,21 +1,20 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8"/>
   <title>Cards Against Humanity — Online</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link href="./styles.css" rel="stylesheet" />
-  <link href="./index.css" rel="stylesheet" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link href="./styles.css" rel="stylesheet"/>
+  <link href="./index.css" rel="stylesheet"/>
 </head>
 <body>
   <main class="landing">
     <h1 class="site-title">Cards Against Humanity — Online</h1>
 
-    <div class="cards-wrap">
-      <!-- Sign in -->
-      <section class="card">
-        <h2>Sign in</h2>
-
+    <!-- Sign-in card (hidden once authed) -->
+    <section id="signCard" class="card">
+      <h2>Sign in</h2>
+      <div class="auth-row">
         <button id="googleBtn" class="gsi-material-button">
           <div class="gsi-material-button-state"></div>
           <div class="gsi-material-button-content-wrapper">
@@ -28,34 +27,51 @@
               </svg>
             </div>
             <span class="gsi-material-button-contents">Continue with Google</span>
-            <span style="display:none;">Continue with Google</span>
           </div>
         </button>
+        <button id="openCreate" class="ghost">Create account</button>
+      </div>
+      <form id="emailForm" class="stack">
+        <input id="email" type="email" placeholder="Email" required/>
+        <input id="password" type="password" placeholder="Password" required/>
+        <button id="emailSignIn" type="submit" class="primary">Sign in</button>
+      </form>
+      <small id="authErr" class="error"></small>
+    </section>
 
-        <form id="emailForm" class="form-cols">
-          <input id="email" type="email" placeholder="Email" required />
-          <input id="password" type="password" placeholder="Password" required />
-          <button id="emailSignIn" type="submit" class="primary">Sign in</button>
-        </form>
-        <small id="authErr" class="error"></small>
-      </section>
-
-      <!-- Join a room -->
-      <section class="card">
-        <h2>Join a Room</h2>
-
-        <div class="room-buttons">
-          <button data-room="room1" class="joinBtn pill">Room 1</button>
-          <button data-room="room2" class="joinBtn pill">Room 2</button>
-        </div>
-
-        <label class="hint">Room Code (only if private)</label>
-        <input id="roomCode" type="password" placeholder="Room code (optional)" />
-
-        <small id="gateErr" class="error"></small>
-      </section>
-    </div>
+    <!-- Room selection (shown once authed) -->
+    <section id="roomCard" class="card" style="display:none">
+      <div class="room-header">
+        <div id="userInfo"></div>
+        <button id="signOutBtn" class="signout">Sign out</button>
+      </div>
+      <h2>Join a Room</h2>
+      <div class="row">
+        <button data-room="room1" class="joinBtn pill">Room 1</button>
+        <button data-room="room2" class="joinBtn pill">Room 2</button>
+      </div>
+      <label class="hint">Room Code (only if private)</label>
+      <input id="roomCode" type="password" placeholder="Room code (optional)"/>
+      <small id="gateErr" class="error"></small>
+    </section>
   </main>
+
+  <!-- Create Account Modal -->
+  <div id="createModal" class="modal hidden">
+    <div class="modal-card">
+      <h3>Create account</h3>
+      <form id="createForm" class="stack">
+        <input id="newEmail" type="email" placeholder="Email" required/>
+        <input id="newPass" type="password" placeholder="Password (6+ chars)" minlength="6" required/>
+        <input id="newPass2" type="password" placeholder="Confirm password" minlength="6" required/>
+        <div class="row end">
+          <button type="button" id="createCancel" class="ghost">Cancel</button>
+          <button type="submit" class="primary">Create</button>
+        </div>
+        <small id="createErr" class="error"></small>
+      </form>
+    </div>
+  </div>
 
   <script type="module" src="./script.js"></script>
 </body>
