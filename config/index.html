@@ -5,27 +5,47 @@
   <title>CAH Config (Admin)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root{--bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;--ok:#15c27f;--err:#ff6b6b;--accent:#b4002b}
-    *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
-    main{max-width:980px;margin:24px auto;padding:0 16px}
+    :root{
+      --bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;
+      --ok:#15c27f;--err:#ff6b6b;--accent:#b4002b;--chip:#1f1f1f
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+      font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
+    main{max-width:1100px;margin:24px auto;padding:0 16px}
     h1{margin:0 0 12px} h2{margin:0 0 12px;font-size:18px}
-    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 8px 28px rgba(0,0,0,.45);margin:12px 0}
-    input,button{font:inherit}
-    input{padding:10px;border-radius:10px;border:1px solid var(--ring);background:#0b0b0b;color:#fff}
+    input,button,textarea{font:inherit}
+    input,textarea{padding:10px;border-radius:10px;border:1px solid var(--ring);background:#0b0b0b;color:#fff}
+    textarea{min-height:110px;resize:vertical}
     button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
     button.primary{background:#fff;color:#000} button.ghost{background:#1f1f1f;color:#fff}
     button.danger{background:var(--accent);color:#fff}
-    small.muted{color:var(--muted)} .badge{padding:2px 8px;border-radius:999px;font-size:12px;margin-left:8px}
-    .ok{background:rgba(21,194,127,.12);color:#7ef1c1} .err{background:rgba(255,107,107,.12);color:#ffc9c9}
+    small.muted{color:var(--muted)}
     .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
     .toast{background:#1a1a1a;color:#e6e6e6;padding:10px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media (max-width:900px){.grid{grid-template-columns:1fr}}
-    .user-card{border:1px solid #1f1f1f;border-radius:12px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center}
-    .user-meta{display:flex;flex-direction:column;gap:2px}
-    .dim{color:#bcbcbc;font-size:12px}
-    .inline{display:inline-flex;gap:8px;align-items:center}
+    /* Search panel */
+    .searchWrap{display:grid;grid-template-columns:300px 1fr;gap:14px}
+    @media (max-width:900px){.searchWrap{grid-template-columns:1fr}}
+    .list{background:#101010;border:1px solid #1a1a1a;border-radius:12px;max-height:420px;overflow:auto}
+    .item{display:flex;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid #1a1a1a;cursor:pointer;transition:background .15s}
+    .item:hover{background:#131313}
+    .meta{display:flex;flex-direction:column;gap:3px}
+    .email{color:#bdbdbd;font-size:12px}
+    .chips{display:flex;gap:6px;align-items:center}
+    .chip{background:var(--chip);border:1px solid #232323;border-radius:999px;padding:4px 8px;font-size:12px}
+    .crown{font-size:14px}
+    .banBadge{display:inline-flex;align-items:center;gap:6px}
+    .banBadge svg{width:14px;height:14px}
+    .rightCol{display:grid;gap:10px;align-content:start}
+    /* Modal */
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}
+    .modal.show{display:flex}
+    .modal-card{width:min(92vw,620px);background:#151515;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);animation:pop .15s ease-out}
+    @keyframes pop{from{transform:scale(.97);opacity:.8}to{transform:scale(1);opacity:1}}
+    .user-head{display:flex;justify-content:space-between;align-items:center}
+    .muted{color:#a8a8a8}
   </style>
 </head>
 <body>
@@ -45,53 +65,81 @@
     <section id="adminWrap" style="display:none">
       <section class="card">
         <div class="row" style="justify-content:space-between">
-          <h2>Welcome, <span id="whoami">Admin</span> <span class="badge ok">admin</span></h2>
+          <h2>Welcome, <span id="whoami">Admin</span></h2>
           <a href="../" class="ghost" style="text-decoration:none"><button class="ghost">← Back to Lobby</button></a>
         </div>
         <small class="muted">Root admin (<code>gmolter8@gmail.com</code>) is permanently admin and cannot be banned or demoted by others.</small>
       </section>
 
-      <!-- Search -->
       <section class="card">
-        <h2>User Search</h2>
-        <div class="row">
-          <input id="q" placeholder="Search by email or nickname" style="min-width:260px;flex:1"/>
-          <button id="searchBtn" class="primary">Search</button>
-          <button id="refreshAll" class="ghost">Refresh All</button>
-        </div>
-        <div id="results" class="grid" style="margin-top:10px"></div>
-        <small class="muted">Search results are from <code>/profiles</code>. Clicking actions below uses <code>/admins/uids</code> and <code>/bans/uids</code>.</small>
-      </section>
-
-      <!-- Rooms -->
-      <section class="card">
-        <h2>Room Settings</h2>
-        <div class="grid">
-          <div class="card">
-            <h2>Room 1</h2>
-            <div class="row"><label><input type="checkbox" id="r1Private"> Private</label></div>
-            <div class="row" style="margin-top:6px"><input id="r1Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1"/></div>
-            <div class="row" style="margin-top:8px">
-              <button id="saveR1" class="primary">Save Room 1</button>
-              <button id="clearR1" class="ghost">Clear Password (Public)</button>
+        <h2>Users</h2>
+        <div class="searchWrap">
+          <!-- Left: list -->
+          <div>
+            <div class="row">
+              <input id="q" placeholder="Search email or nickname" style="flex:1;min-width:220px">
+              <button id="searchBtn" class="primary">Search</button>
+              <button id="refreshBtn" class="ghost">Refresh</button>
             </div>
-            <small id="r1Status" class="muted"></small>
+            <div id="list" class="list" style="margin-top:10px"></div>
           </div>
-
-          <div class="card">
-            <h2>Room 2</h2>
-            <div class="row"><label><input type="checkbox" id="r2Private"> Private</label></div>
-            <div class="row" style="margin-top:6px"><input id="r2Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1"/></div>
-            <div class="row" style="margin-top:8px">
-              <button id="saveR2" class="primary">Save Room 2</button>
-              <button id="clearR2" class="ghost">Clear Password (Public)</button>
+          <!-- Right: quick room settings -->
+          <div class="rightCol">
+            <div class="card">
+              <h2>Room 1</h2>
+              <div class="row"><label><input type="checkbox" id="r1Private"> Private</label></div>
+              <div class="row"><input id="r1Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1"></div>
+              <div class="row">
+                <button id="saveR1" class="primary">Save Room 1</button>
+                <button id="clearR1" class="ghost">Clear Password (Public)</button>
+              </div>
+              <small id="r1Status" class="muted"></small>
             </div>
-            <small id="r2Status" class="muted"></small>
+
+            <div class="card">
+              <h2>Room 2</h2>
+              <div class="row"><label><input type="checkbox" id="r2Private"> Private</label></div>
+              <div class="row"><input id="r2Pwd" type="text" placeholder="password (leave blank to keep current)" style="flex:1"></div>
+              <div class="row">
+                <button id="saveR2" class="primary">Save Room 2</button>
+                <button id="clearR2" class="ghost">Clear Password (Public)</button>
+              </div>
+              <small id="r2Status" class="muted"></small>
+            </div>
           </div>
         </div>
       </section>
     </section>
   </main>
+
+  <!-- User modal -->
+  <div id="userModal" class="modal">
+    <div class="modal-card">
+      <div class="user-head">
+        <h2 id="m_name"></h2>
+        <button id="m_close" class="ghost">Close</button>
+      </div>
+      <div class="muted" id="m_email"></div>
+      <div class="muted" id="m_uid" style="margin:6px 0 10px"></div>
+
+      <div class="row" style="margin:4px 0 10px">
+        <span id="m_isAdmin" class="chip">Admin: no</span>
+        <span id="m_isBanned" class="chip">Banned: no</span>
+      </div>
+
+      <div class="row" id="m_actions" style="margin-bottom:10px">
+        <!-- buttons injected based on state -->
+      </div>
+
+      <div>
+        <label class="muted">Notes</label>
+        <textarea id="m_notes" placeholder="Private admin notes about this user (e.g., why they were banned)"></textarea>
+        <div class="row" style="justify-content:flex-end;margin-top:8px">
+          <button id="m_saveNotes" class="primary">Save Notes</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="toasts" id="toasts"></div>
 
@@ -115,99 +163,181 @@
     const auth = getAuth(app);
     const db = getDatabase(app, "https://olio-cardsagainsthumanity-default-rtdb.firebaseio.com/");
     const $ = q => document.querySelector(q);
-    const toast = (t, ms=2600) => { const w=$("#toasts"); const d=document.createElement("div"); d.className="toast"; d.textContent=t; w.appendChild(d); setTimeout(()=>d.remove(), ms); };
+    const toast = (t, ms=2400) => { const w=$("#toasts"); const d=document.createElement("div"); d.className="toast"; d.textContent=t; w.appendChild(d); setTimeout(()=>d.remove(), ms); };
 
-    // page mode: admin or not
+    // Admin gate (no sign-in UI here)
     onAuthStateChanged(auth, async (u) => {
-      // No sign-in UI here. If not authed, block page.
       if (!u) { $("#blocked").style.display = ""; return; }
-
-      // Is admin? root email is always admin regardless of DB
       let isAdmin = (u.email === ROOT_EMAIL);
       if (!isAdmin) {
-        try {
-          const s = await get(ref(db, "admins/uids/" + u.uid));
-          isAdmin = s.val() === true;
-        } catch {}
+        try{ const s = await get(ref(db, "admins/uids/" + u.uid)); isAdmin = s.val() === true; }catch{}
       }
-
       if (!isAdmin) { $("#blocked").style.display = ""; return; }
 
-      // admin UI
       $("#blocked").style.display = "none";
       $("#adminWrap").style.display = "";
       $("#whoami").textContent = u.email || u.uid;
 
-      // Load room settings summaries (no passwords shown)
+      // wire search + list + rooms
+      $("#searchBtn").onclick = search;
+      $("#refreshBtn").onclick = search;
+      await search();
       await loadRoom("room1");
       await loadRoom("room2");
-
-      // Search handlers
-      $("#searchBtn").onclick = searchProfiles;
-      $("#refreshAll").onclick = searchProfiles;
     });
 
-    // ---- Search ----
-    async function searchProfiles(){
-      const term = ($("#q").value || "").trim().toLowerCase();
-      const results = $("#results"); results.innerHTML = "";
+    // ---------- Search/List ----------
+    async function search(){
+      const term = ($("#q").value||"").trim().toLowerCase();
+      const list = $("#list"); list.innerHTML = "";
       try{
-        const snap = await get(ref(db, "profiles"));
-        const all = snap.val() || {};
-        const arr = Object.entries(all).map(([uid,p])=>({uid, email:p?.email||"", nickname:p?.nickname||p?.firstName||""}));
-        const filtered = term ? arr.filter(u => (u.email.toLowerCase().includes(term) || (u.nickname||"").toLowerCase().includes(term))) : arr.slice(0,12);
-        if(filtered.length===0){ results.innerHTML = "<small class='muted'>No users found.</small>"; return; }
-        for(const u of filtered){ results.appendChild(await renderUserCard(u)); }
-      }catch(e){ toast("Failed to search profiles"); }
+        const [pSnap,aSnap,bSnap] = await Promise.all([
+          get(ref(db,"profiles")), get(ref(db,"admins/uids")), get(ref(db,"bans/uids"))
+        ]);
+        const profiles = pSnap.val() || {};
+        const admins = aSnap.val() || {};
+        const bans = bSnap.val() || {};
+
+        const users = Object.entries(profiles).map(([uid, p]) => ({
+          uid,
+          email: (p && p.email) || "",
+          nickname: (p && (p.nickname || p.firstName)) || "",
+          isAdmin: admins[uid] === true || (p && p.email) === ROOT_EMAIL,
+          isBanned: bans[uid] === true
+        }));
+
+        const filtered = term
+          ? users.filter(u => (u.email || "").toLowerCase().includes(term) || (u.nickname||"").toLowerCase().includes(term))
+          : users.slice(0, 40);
+
+        if (filtered.length === 0) {
+          list.innerHTML = "<div class='item'><div class='meta'><div>No users found</div></div></div>";
+          return;
+        }
+
+        for (const u of filtered) list.appendChild(renderListItem(u));
+      }catch(e){ toast("Failed to load users"); }
     }
 
-    async function renderUserCard(user){
-      const card = document.createElement("div"); card.className="user-card";
-      const meta = document.createElement("div"); meta.className="user-meta";
-      meta.innerHTML = `
-        <div class="inline"><strong>${user.nickname || "(no nickname)"} </strong> <span class="dim">${user.email}</span></div>
-        <div class="dim">UID: ${user.uid}</div>
-      `;
-      const actions = document.createElement("div"); actions.className="row";
-      const btnAdd = btn("Add Admin","primary",()=> setAdmin(user.uid,true));
-      const btnRem = btn("Remove Admin","ghost",()=> setAdmin(user.uid,false));
-      const btnBan = btn("Ban","danger",()=> setBan(user.uid,true));
-      const btnUnb = btn("Unban","ghost",()=> setBan(user.uid,false));
-      actions.append(btnAdd,btnRem,btnBan,btnUnb);
-      card.append(meta,actions);
-      return card;
+    function renderListItem(u){
+      const el = document.createElement("div"); el.className = "item";
+      const meta = document.createElement("div"); meta.className = "meta";
+      meta.innerHTML = `<div>${escapeHtml(u.nickname||"(no nickname)")}</div><div class="email">${escapeHtml(u.email||"")}</div>`;
+      const chips = document.createElement("div"); chips.className="chips";
+
+      if (u.isAdmin) {
+        const c = document.createElement("span"); c.className="chip"; c.innerHTML = `<span class="crown">👑</span> admin`;
+        chips.appendChild(c);
+      }
+      if (u.isBanned) {
+        const b = document.createElement("span"); b.className="chip banBadge";
+        b.innerHTML = bannedSVG()+" banned";
+        chips.appendChild(b);
+      }
+      el.append(meta, chips);
+
+      el.onclick = ()=> openUserModal(u.uid);
+      return el;
     }
-    function btn(t,cls,fn){ const b=document.createElement("button"); b.textContent=t; b.className=cls; b.onclick=fn; return b; }
+
+    function bannedSVG(){
+      return `
+        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" stroke="#ff3b3b" stroke-width="8"/>
+          <path d="M45 50a13 13 0 00-26 0" stroke="#ff3b3b" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="32" cy="26" r="8" fill="#1a1a1a"/>
+          <path d="M16 16l32 32" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"/>
+        </svg>`;
+    }
+
+    // ---------- Modal (user card) ----------
+    async function openUserModal(uid){
+      try{
+        const [pSnap, aSnap, bSnap] = await Promise.all([
+          get(ref(db,"profiles/"+uid)),
+          get(ref(db,"admins/uids/"+uid)),
+          get(ref(db,"bans/uids/"+uid))
+        ]);
+        const p = pSnap.val()||{};
+        const isAdmin = aSnap.val() === true || p.email === ROOT_EMAIL;
+        const isBanned = bSnap.val() === true;
+
+        // Fill fields
+        $("#m_name").textContent = p.nickname || p.firstName || "(no nickname)";
+        $("#m_email").textContent = p.email || "";
+        $("#m_uid").textContent = "UID: " + uid;
+        $("#m_isAdmin").textContent = "Admin: " + (isAdmin ? "yes" : "no");
+        $("#m_isBanned").textContent = "Banned: " + (isBanned ? "yes" : "no");
+
+        // Notes
+        $("#m_notes").value = p.notes || "";
+
+        // Actions
+        const actions = $("#m_actions"); actions.innerHTML = "";
+        const viewerIsRoot = (auth.currentUser && auth.currentUser.email === ROOT_EMAIL);
+        const targetIsRoot = (p.email === ROOT_EMAIL);
+
+        // If target is root and viewer isn't root -> no admin/ban buttons
+        if (!(targetIsRoot && !viewerIsRoot)) {
+          if (isAdmin) actions.appendChild(btn("Remove Admin","ghost",()=> setAdmin(uid,false)));
+          else actions.appendChild(btn("Add Admin","primary",()=> setAdmin(uid,true)));
+
+          if (isBanned) actions.appendChild(btn("Unban","ghost",()=> setBan(uid,false)));
+          else actions.appendChild(btn("Ban","danger",()=> setBan(uid,true)));
+        } else {
+          const note = document.createElement("span");
+          note.className="chip"; note.textContent="Root admin (locked)";
+          actions.appendChild(note);
+        }
+
+        // Save notes
+        $("#m_saveNotes").onclick = async ()=>{
+          try{
+            await update(ref(db,"profiles/"+uid), { notes: $("#m_notes").value });
+            toast("Notes saved");
+          }catch(e){ toast("Failed to save notes"); }
+        };
+
+        // Show modal
+        $("#userModal").classList.add("show");
+        $("#m_close").onclick = ()=> $("#userModal").classList.remove("show");
+      }catch(e){ toast("Failed to open user"); }
+    }
+
+    function btn(text, cls, fn){ const b=document.createElement("button"); b.textContent=text; b.className=cls; b.onclick=fn; return b; }
+    const escapeHtml = s => (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 
     async function setAdmin(uid,val){
-      // prevent anyone except root from touching root admin account
       try{
-        const prof = await get(ref(db, "profiles/" + uid));
-        const email = (prof.val() && prof.val().email) || "";
-        if (email === ROOT_EMAIL && val === false){ toast("Root admin cannot be demoted."); return; }
-      }catch{}
-      try{
-        if(val) await set(ref(db, "admins/uids/" + uid), true);
-        else    await remove(ref(db, "admins/uids/" + uid));
+        // prevent demoting root
+        const prof = await get(ref(db,"profiles/"+uid));
+        if ((prof.val()?.email) === ROOT_EMAIL && val === false){
+          toast("Root admin cannot be demoted."); return;
+        }
+        if(val) await set(ref(db,"admins/uids/"+uid), true);
+        else await remove(ref(db,"admins/uids/"+uid));
         toast(val?"Admin added":"Admin removed");
+        await search(); // refresh crowns
+        $("#userModal").classList.remove("show");
       }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
     }
 
     async function setBan(uid,val){
-      // cannot ban root
       try{
-        const prof = await get(ref(db, "profiles/" + uid));
-        const email = (prof.val() && prof.val().email) || "";
-        if (email === ROOT_EMAIL){ toast("Root admin cannot be banned."); return; }
-      }catch{}
-      try{
-        if(val) await set(ref(db, "bans/uids/" + uid), true);
-        else    await remove(ref(db, "bans/uids/" + uid));
+        // cannot ban root
+        const prof = await get(ref(db,"profiles/"+uid));
+        if ((prof.val()?.email) === ROOT_EMAIL){
+          toast("Root admin cannot be banned."); return;
+        }
+        if(val) await set(ref(db,"bans/uids/"+uid), true);
+        else await remove(ref(db,"bans/uids/"+uid));
         toast(val?"User banned":"User unbanned");
+        await search(); // refresh badges
+        $("#userModal").classList.remove("show");
       }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
     }
 
-    // ---- Rooms ----
+    // ---------- Rooms ----------
     function bindRoomControls(room, chkId, pwdId, saveBtnId, clearBtnId, statusId){
       document.querySelector(saveBtnId).onclick = async ()=>{
         const priv = document.querySelector(chkId).checked;
