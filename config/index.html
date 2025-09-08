@@ -50,8 +50,6 @@
     .headerLine{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
     .nameLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .notesWrap{display:flex;flex-direction:column;gap:6px}
-    /* Delete modals small layout */
-    .small-card{width:min(92vw,520px)}
     .dangerNote{background:rgba(180,0,43,.08);border:1px solid rgba(180,0,43,.32);padding:10px;border-radius:10px}
   </style>
 </head>
@@ -159,14 +157,22 @@
         </div>
       </div>
 
+      <!-- Bottom-left delete bar -->
+      <div class="row" id="m_deleteBar" style="justify-content:flex-start;margin-top:12px;display:none">
+        <button id="m_deleteBtn" class="danger">Delete User</button>
+      </div>
     </div>
   </div>
 
   <!-- Delete Step 1: Code -->
   <div id="delStep1" class="modal">
-    <div class="modal-card small-card">
+    <div class="modal-card" style="width:min(92vw,560px)">
       <h2>User Deletion Authorization Code</h2>
-      <p class="muted">An authorization code has been generated and stored at <code>/profiles/{uid}/authCode</code>. Please look it up in the database and enter it below.</p>
+      <p class="muted" id="delNote">
+        An authorization code has been generated and stored under this user's UID.
+        Please look it up in the database and enter it below.
+        <br><br><strong id="delUID"></strong>
+      </p>
       <div class="row"><input id="delCodeInput" placeholder="Enter authorization code"></div>
       <div class="row" style="justify-content:flex-end">
         <button id="delCodeCancel" class="ghost">Cancel</button>
@@ -177,9 +183,9 @@
 
   <!-- Delete Step 2: Irreversible -->
   <div id="delStep2" class="modal">
-    <div class="modal-card small-card">
+    <div class="modal-card" style="width:min(92vw,560px)">
       <h2>Confirm Permanent Deletion</h2>
-      <div class="dangerNote">
+      <div class="dangerNote" style="margin-bottom:10px">
         <small class="muted">This action cannot be undone. Removing a user will permanently delete their profile data stored in the Realtime Database.</small>
       </div>
       <div style="margin:10px 0">
@@ -188,11 +194,17 @@
       <div>
         <label><input type="checkbox" id="chkIrrev"> I understand this action is irreversible</label>
       </div>
-      <div style="margin-top:10px">
-        <small class="muted">Type the confirmation phrase exactly:</small>
-        <div class="row"><input id="confirmPhrase" placeholder="/confirm/delete/username"></div>
+
+      <!-- Extra explanation + phrase -->
+      <div class="card" style="margin-top:10px">
+        <div class="muted" id="delExplain"></div>
+        <div style="margin-top:6px"><strong id="delPhraseShow"></strong></div>
+        <div class="row" style="margin-top:8px">
+          <input id="confirmPhrase" placeholder="Confirmation Phrase" style="flex:1">
+        </div>
       </div>
-      <div class="row" style="justify-content:flex-end;margin-top:8px">
+
+      <div class="row" style="justify-content:flex-end;margin-top:12px">
         <button id="delFinalCancel" class="ghost">Cancel</button>
         <button id="delFinalDo" class="danger" disabled>Permanently Delete</button>
       </div>
@@ -235,7 +247,6 @@
       $("#adminWrap").style.display = "";
       $("#whoami").textContent = u.email || u.uid;
 
-      // wire search + list + rooms
       $("#searchBtn").onclick = search;
       $("#refreshBtn").onclick = search;
       $("#q").addEventListener("input", debounce(search, 160));
@@ -290,6 +301,7 @@
     }
 
     function bannedSVG(){ return `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="28" stroke="#ff3b3b" stroke-width="8"/><path d="M45 50a13 13 0 00-26 0" stroke="#ff3b3b" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="26" r="8" fill="#1a1a1a"/><path d="M16 16l32 32" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"/></svg>`; }
+    const escapeHtml = s => (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 
     // ---------- Modal (user card) ----------
     async function openUserModal(uid){
@@ -338,10 +350,11 @@
           const note = document.createElement("span"); note.className="chip"; note.textContent="Root admin (locked)"; actions.appendChild(note);
         }
 
-        // Delete user (Root only, cannot target root)
+        // Bottom-left Delete (root only, cannot target root)
+        const delBar = $("#m_deleteBar");
+        delBar.style.display = (viewerIsRoot && !targetIsRoot) ? "" : "none";
         if (viewerIsRoot && !targetIsRoot) {
-          const delBtn = btn("Delete User","danger",()=> startDeleteFlow(uid, nickname, p.email || ""));
-          actions.appendChild(delBtn);
+          $("#m_deleteBtn").onclick = ()=> startDeleteFlow(uid, nickname, p.email || "");
         }
 
         $("#m_saveNotes").onclick = async ()=>{
@@ -355,7 +368,6 @@
     }
 
     function btn(text, cls, fn){ const b=document.createElement("button"); b.textContent=text; b.className=cls; b.onclick=fn; return b; }
-    const escapeHtml = s => (s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 
     async function setAdmin(uid,val){
       try{
@@ -376,14 +388,18 @@
     }
 
     // ---------- Delete flow ----------
-    function randomCode(){ return Math.floor(100000 + Math.random()*900000).toString(); } // 6 digits
+    function randomCode(){ return Math.floor(1000 + Math.random()*9000).toString(); } // 4 digits
 
     async function startDeleteFlow(uid, nickname, email){
       try{
         // Step 1: generate and store code (admin must read from RTDB)
         const code = randomCode();
         await update(ref(db,"profiles/"+uid), { authCode: code });
-        // Prepare modal
+
+        // Populate Step 1 message with bold UID
+        $("#delUID").textContent = "UID: " + uid;
+
+        // Open modal
         $("#delCodeInput").value = "";
         $("#delStep1").classList.add("show");
 
@@ -406,8 +422,13 @@
     function openDeleteConfirm(uid, nickname, email){
       const username = (nickname && nickname !== "(no nickname)") ? nickname : ((email||"").split("@")[0]||"user");
       const phrase = `/confirm/delete/${username}`;
+
+      // Explain block
+      $("#delExplain").innerHTML = `Please type the following confirmation to delete <strong>${escapeHtml(username)}</strong> | <span class="muted">${escapeHtml(email||"")}</span>.`;
+      $("#delPhraseShow").textContent = `Confirmation Phrase: ${phrase}`;
+
       $("#confirmPhrase").value = "";
-      $("#confirmPhrase").placeholder = phrase;
+      $("#confirmPhrase").placeholder = "Confirmation Phrase";
       $("#chkAuthRemoved").checked = false;
       $("#chkIrrev").checked = false;
       const finalBtn = $("#delFinalDo");
@@ -424,7 +445,7 @@
       $("#delFinalCancel").onclick = ()=> $("#delStep2").classList.remove("show");
       finalBtn.onclick = async ()=>{
         try{
-          // Remove profile + admin/bans flags
+          // Manual route: remove profile + admin/bans flags (Auth deletion is manual)
           await Promise.allSettled([
             remove(ref(db,"profiles/"+uid)),
             remove(ref(db,"admins/uids/"+uid)),
