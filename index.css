@@ -1,4 +1,4 @@
-/* Bigger, centered layout for the landing page */
+/* Landing page layout tweaks */
 #authCard,#joinCard{max-width:720px;justify-self:center}
 #authCard input,#joinCard input{margin-top:10px}
 #authCard .row{margin-top:10px}
@@ -7,6 +7,3 @@
 .modal-card h3{margin:4px 0 10px}
 .modal-card input{margin-top:10px}
 .modal-card .row{margin-top:14px}
-/* small lift */
-.card{transition:transform .15s ease, box-shadow .15s ease}
-.card:hover{transform:translateY(-2px);box-shadow:0 36px 90px rgba(0,0,0,.6)}
