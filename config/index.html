@@ -5,13 +5,8 @@
   <title>CAH Config (Admin)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    :root{
-      --bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;
-      --ok:#15c27f;--err:#ff6b6b;--accent:#b4002b;--chip:#1f1f1f
-    }
-    *{box-sizing:border-box}
-    html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
-      font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
+    :root{--bg:#0e0e0e;--card:#141414;--text:#fff;--muted:#a8a8a8;--ring:#2a2a2a;--accent:#b4002b;--chip:#1f1f1f}
+    *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,sans-serif}
     main{max-width:1100px;margin:24px auto;padding:0 16px}
     h1{margin:0 0 12px} h2{margin:0 0 12px;font-size:18px}
     .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
@@ -21,8 +16,7 @@
     textarea{min-height:180px;resize:vertical}
     button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
     button.primary{background:#fff;color:#000} button.ghost{background:#1f1f1f;color:#fff}
-    button.danger{background:var(--accent);color:#fff}
-    button.mini{padding:6px 10px;border-radius:8px;font-weight:700;font-size:12px}
+    button.danger{background:var(--accent);color:#fff} button.mini{padding:6px 10px;border-radius:8px;font-size:12px}
     small.muted{color:var(--muted)}
     .toasts{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:8px;z-index:10}
     .toast{background:#1a1a1a;color:#e6e6e6;padding:10px 12px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -56,6 +50,9 @@
     .headerLine{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
     .nameLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .notesWrap{display:flex;flex-direction:column;gap:6px}
+    /* Delete modals small layout */
+    .small-card{width:min(92vw,520px)}
+    .dangerNote{background:rgba(180,0,43,.08);border:1px solid rgba(180,0,43,.32);padding:10px;border-radius:10px}
   </style>
 </head>
 <body>
@@ -141,24 +138,17 @@
         <div class="statusCol">
           <div class="statusBadge">
             <div class="icon">👑</div>
-            <div>
-              <div class="label">Admin</div>
-              <div id="m_isAdmin" class="value">no</div>
-            </div>
+            <div><div class="label">Admin</div><div id="m_isAdmin" class="value">no</div></div>
           </div>
           <div class="statusBadge">
             <div class="icon">🚫</div>
-            <div>
-              <div class="label">Banned</div>
-              <div id="m_isBanned" class="value">no</div>
-            </div>
+            <div><div class="label">Banned</div><div id="m_isBanned" class="value">no</div></div>
           </div>
         </div>
 
         <!-- Right: actions + notes -->
         <div>
           <div class="row" id="m_actions" style="margin-bottom:12px"></div>
-
           <div class="notesWrap">
             <label class="muted" for="m_notes">Notes</label>
             <textarea id="m_notes" placeholder="Private admin notes about this user (e.g., why they were banned)"></textarea>
@@ -172,6 +162,43 @@
     </div>
   </div>
 
+  <!-- Delete Step 1: Code -->
+  <div id="delStep1" class="modal">
+    <div class="modal-card small-card">
+      <h2>User Deletion Authorization Code</h2>
+      <p class="muted">An authorization code has been generated and stored at <code>/profiles/{uid}/authCode</code>. Please look it up in the database and enter it below.</p>
+      <div class="row"><input id="delCodeInput" placeholder="Enter authorization code"></div>
+      <div class="row" style="justify-content:flex-end">
+        <button id="delCodeCancel" class="ghost">Cancel</button>
+        <button id="delCodeVerify" class="primary">Verify</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Step 2: Irreversible -->
+  <div id="delStep2" class="modal">
+    <div class="modal-card small-card">
+      <h2>Confirm Permanent Deletion</h2>
+      <div class="dangerNote">
+        <small class="muted">This action cannot be undone. Removing a user will permanently delete their profile data stored in the Realtime Database.</small>
+      </div>
+      <div style="margin:10px 0">
+        <label><input type="checkbox" id="chkAuthRemoved"> This user has been removed from the Database Authentication Sector</label>
+      </div>
+      <div>
+        <label><input type="checkbox" id="chkIrrev"> I understand this action is irreversible</label>
+      </div>
+      <div style="margin-top:10px">
+        <small class="muted">Type the confirmation phrase exactly:</small>
+        <div class="row"><input id="confirmPhrase" placeholder="/confirm/delete/username"></div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px">
+        <button id="delFinalCancel" class="ghost">Cancel</button>
+        <button id="delFinalDo" class="danger" disabled>Permanently Delete</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toasts" id="toasts"></div>
 
   <script type="module">
@@ -180,7 +207,6 @@
     import { getDatabase, ref, get, set, update, remove } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
 
     const ROOT_EMAIL = "gmolter8@gmail.com";
-
     const firebaseConfig = {
       apiKey: "AIzaSyAe7u7Ij4CQUrWUDirzEZo0hyEPwjXO_uI",
       authDomain: "olio-cardsagainsthumanity.firebaseapp.com",
@@ -196,23 +222,23 @@
     const $ = q => document.querySelector(q);
     const toast = (t, ms=2400) => { const w=$("#toasts"); const d=document.createElement("div"); d.className="toast"; d.textContent=t; w.appendChild(d); setTimeout(()=>d.remove(), ms); };
 
-    // Admin gate (no sign-in UI here)
+    let currentTarget = null; // { uid, email, nickname }
+
+    // Admin gate
     onAuthStateChanged(auth, async (u) => {
       if (!u) { $("#blocked").style.display = ""; return; }
       let isAdmin = (u.email === ROOT_EMAIL);
-      if (!isAdmin) {
-        try{ const s = await get(ref(db, "admins/uids/" + u.uid)); isAdmin = s.val() === true; }catch{}
-      }
+      if (!isAdmin) { try{ const s = await get(ref(db, "admins/uids/" + u.uid)); isAdmin = s.val() === true; }catch{} }
       if (!isAdmin) { $("#blocked").style.display = ""; return; }
 
       $("#blocked").style.display = "none";
       $("#adminWrap").style.display = "";
       $("#whoami").textContent = u.email || u.uid;
 
-      // wire search (live) + list + rooms
+      // wire search + list + rooms
       $("#searchBtn").onclick = search;
       $("#refreshBtn").onclick = search;
-      $("#q").addEventListener("input", debounce(search, 160)); // LIVE REFRESH
+      $("#q").addEventListener("input", debounce(search, 160));
       await search();
       await loadRoom("room1");
       await loadRoom("room2");
@@ -240,7 +266,7 @@
 
         const filtered = term
           ? users.filter(u => (u.email || "").toLowerCase().includes(term) || (u.nickname||"").toLowerCase().includes(term))
-          : users.slice(0, 40);
+          : users.slice(0, 60);
 
         if (filtered.length === 0) {
           list.innerHTML = "<div class='item'><div class='meta'><div>No users found</div></div></div>";
@@ -256,31 +282,14 @@
       const meta = document.createElement("div"); meta.className = "meta";
       meta.innerHTML = `<div>${escapeHtml(u.nickname||"(no nickname)")}</div><div class="email">${escapeHtml(u.email||"")}</div>`;
       const chips = document.createElement("div"); chips.className="chips";
-
-      if (u.isAdmin) {
-        const c = document.createElement("span"); c.className="chip"; c.innerHTML = `<span class="crown">👑</span> admin`;
-        chips.appendChild(c);
-      }
-      if (u.isBanned) {
-        const b = document.createElement("span"); b.className="chip banBadge";
-        b.innerHTML = bannedSVG()+" banned";
-        chips.appendChild(b);
-      }
+      if (u.isAdmin) { const c=document.createElement("span"); c.className="chip"; c.innerHTML=`<span class="crown">👑</span> admin`; chips.appendChild(c); }
+      if (u.isBanned) { const b=document.createElement("span"); b.className="chip banBadge"; b.innerHTML=bannedSVG()+" banned"; chips.appendChild(b); }
       el.append(meta, chips);
-
       el.onclick = ()=> openUserModal(u.uid);
       return el;
     }
 
-    function bannedSVG(){
-      return `
-        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <circle cx="32" cy="32" r="28" stroke="#ff3b3b" stroke-width="8"/>
-          <path d="M45 50a13 13 0 00-26 0" stroke="#ff3b3b" stroke-width="6" stroke-linecap="round"/>
-          <circle cx="32" cy="26" r="8" fill="#1a1a1a"/>
-          <path d="M16 16l32 32" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"/>
-        </svg>`;
-    }
+    function bannedSVG(){ return `<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="32" cy="32" r="28" stroke="#ff3b3b" stroke-width="8"/><path d="M45 50a13 13 0 00-26 0" stroke="#ff3b3b" stroke-width="6" stroke-linecap="round"/><circle cx="32" cy="26" r="8" fill="#1a1a1a"/><path d="M16 16l32 32" stroke="#ff3b3b" stroke-width="8" stroke-linecap="round"/></svg>`; }
 
     // ---------- Modal (user card) ----------
     async function openUserModal(uid){
@@ -294,8 +303,9 @@
         const isAdmin = aSnap.val() === true || p.email === ROOT_EMAIL;
         const isBanned = bSnap.val() === true;
 
-        // Fill fields
         const nickname = p.nickname || p.firstName || "(no nickname)";
+        currentTarget = { uid, email: p.email || "", nickname };
+
         $("#m_name").textContent = nickname;
         $("#m_email").textContent = p.email || "";
         $("#m_uid").textContent = "UID: " + uid;
@@ -303,19 +313,15 @@
         $("#m_isBanned").textContent = isBanned ? "yes" : "no";
         $("#m_notes").value = p.notes || "";
 
-        // Edit name handler (prompt for simplicity)
+        // Edit name
         $("#m_editName").onclick = async ()=>{
           const current = nickname === "(no nickname)" ? "" : nickname;
           const newName = prompt("Enter new nickname", current);
           if(newName===null) return;
           const trimmed = newName.trim().slice(0,40);
           if(!trimmed){ toast("Nickname cannot be empty."); return; }
-          try{
-            await update(ref(db,"profiles/"+uid), { nickname: trimmed });
-            toast("Nickname updated");
-            $("#m_name").textContent = trimmed;
-            await search(); // refresh list
-          }catch(e){ toast("Failed to update nickname"); }
+          try{ await update(ref(db,"profiles/"+uid), { nickname: trimmed }); toast("Nickname updated"); $("#m_name").textContent = trimmed; await search(); }
+          catch{ toast("Failed to update nickname"); }
         };
 
         // Actions
@@ -323,24 +329,24 @@
         const viewerIsRoot = (auth.currentUser && auth.currentUser.email === ROOT_EMAIL);
         const targetIsRoot = (p.email === ROOT_EMAIL);
 
-        // If target is root and viewer isn't root -> no admin/ban buttons
         if (!(targetIsRoot && !viewerIsRoot)) {
           if (isAdmin) actions.appendChild(btn("Remove Admin","ghost",()=> setAdmin(uid,false)));
           else actions.appendChild(btn("Add Admin","primary",()=> setAdmin(uid,true)));
-
           if (isBanned) actions.appendChild(btn("Unban","ghost",()=> setBan(uid,false)));
           else actions.appendChild(btn("Ban","danger",()=> setBan(uid,true)));
         } else {
-          const note = document.createElement("span");
-          note.className="chip"; note.textContent="Root admin (locked)";
-          actions.appendChild(note);
+          const note = document.createElement("span"); note.className="chip"; note.textContent="Root admin (locked)"; actions.appendChild(note);
+        }
+
+        // Delete user (Root only, cannot target root)
+        if (viewerIsRoot && !targetIsRoot) {
+          const delBtn = btn("Delete User","danger",()=> startDeleteFlow(uid, nickname, p.email || ""));
+          actions.appendChild(delBtn);
         }
 
         $("#m_saveNotes").onclick = async ()=>{
-          try{
-            await update(ref(db,"profiles/"+uid), { notes: $("#m_notes").value });
-            toast("Notes saved");
-          }catch(e){ toast("Failed to save notes"); }
+          try{ await update(ref(db,"profiles/"+uid), { notes: $("#m_notes").value }); toast("Notes saved"); }
+          catch{ toast("Failed to save notes"); }
         };
 
         $("#userModal").classList.add("show");
@@ -354,27 +360,84 @@
     async function setAdmin(uid,val){
       try{
         const prof = await get(ref(db,"profiles/"+uid));
-        if ((prof.val()?.email) === "gmolter8@gmail.com" && val === false){
-          toast("Root admin cannot be demoted."); return;
-        }
-        if(val) await set(ref(db,"admins/uids/"+uid), true);
-        else await remove(ref(db,"admins/uids/"+uid));
-        toast(val?"Admin added":"Admin removed");
-        await search(); $("#userModal").classList.remove("show");
-      }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
+        if ((prof.val()?.email) === ROOT_EMAIL && val === false){ toast("Root admin cannot be demoted."); return; }
+        if(val) await set(ref(db,"admins/uids/"+uid), true); else await remove(ref(db,"admins/uids/"+uid));
+        toast(val?"Admin added":"Admin removed"); await search(); $("#userModal").classList.remove("show");
+      }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":"Update failed"); }
     }
 
     async function setBan(uid,val){
       try{
         const prof = await get(ref(db,"profiles/"+uid));
-        if ((prof.val()?.email) === "gmolter8@gmail.com"){
-          toast("Root admin cannot be banned."); return;
-        }
-        if(val) await set(ref(db,"bans/uids/"+uid), true);
-        else await remove(ref(db,"bans/uids/"+uid));
-        toast(val?"User banned":"User unbanned");
-        await search(); $("#userModal").classList.remove("show");
-      }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":(e.message||"Update failed")); }
+        if ((prof.val()?.email) === ROOT_EMAIL){ toast("Root admin cannot be banned."); return; }
+        if(val) await set(ref(db,"bans/uids/"+uid), true); else await remove(ref(db,"bans/uids/"+uid));
+        toast(val?"User banned":"User unbanned"); await search(); $("#userModal").classList.remove("show");
+      }catch(e){ toast(e.code==="PERMISSION_DENIED"?"Not allowed":"Update failed"); }
+    }
+
+    // ---------- Delete flow ----------
+    function randomCode(){ return Math.floor(100000 + Math.random()*900000).toString(); } // 6 digits
+
+    async function startDeleteFlow(uid, nickname, email){
+      try{
+        // Step 1: generate and store code (admin must read from RTDB)
+        const code = randomCode();
+        await update(ref(db,"profiles/"+uid), { authCode: code });
+        // Prepare modal
+        $("#delCodeInput").value = "";
+        $("#delStep1").classList.add("show");
+
+        // Verify handler
+        $("#delCodeVerify").onclick = async ()=>{
+          const entered = $("#delCodeInput").value.trim();
+          try{
+            const s = await get(ref(db,"profiles/"+uid+"/authCode"));
+            const stored = s.val();
+            if(!stored){ toast("No authorization code found. Try again."); return; }
+            if(entered !== String(stored)){ toast("Authorization code does not match."); return; }
+            $("#delStep1").classList.remove("show");
+            openDeleteConfirm(uid, nickname, email);
+          }catch{ toast("Could not verify code."); }
+        };
+        $("#delCodeCancel").onclick = ()=> $("#delStep1").classList.remove("show");
+      }catch{ toast("Failed to start deletion flow"); }
+    }
+
+    function openDeleteConfirm(uid, nickname, email){
+      const username = (nickname && nickname !== "(no nickname)") ? nickname : ((email||"").split("@")[0]||"user");
+      const phrase = `/confirm/delete/${username}`;
+      $("#confirmPhrase").value = "";
+      $("#confirmPhrase").placeholder = phrase;
+      $("#chkAuthRemoved").checked = false;
+      $("#chkIrrev").checked = false;
+      const finalBtn = $("#delFinalDo");
+      finalBtn.disabled = true;
+
+      function evaluate(){
+        const ok = $("#chkAuthRemoved").checked && $("#chkIrrev").checked && ($("#confirmPhrase").value.trim() === phrase);
+        finalBtn.disabled = !ok;
+      }
+      $("#chkAuthRemoved").onchange = evaluate;
+      $("#chkIrrev").onchange = evaluate;
+      $("#confirmPhrase").oninput = evaluate;
+
+      $("#delFinalCancel").onclick = ()=> $("#delStep2").classList.remove("show");
+      finalBtn.onclick = async ()=>{
+        try{
+          // Remove profile + admin/bans flags
+          await Promise.allSettled([
+            remove(ref(db,"profiles/"+uid)),
+            remove(ref(db,"admins/uids/"+uid)),
+            remove(ref(db,"bans/uids/"+uid))
+          ]);
+          $("#delStep2").classList.remove("show");
+          $("#userModal").classList.remove("show");
+          toast("User profile deleted");
+          await search();
+        }catch{ toast("Failed to delete user"); }
+      };
+
+      $("#delStep2").classList.add("show");
     }
 
     // ---------- Rooms ----------
@@ -414,7 +477,6 @@
       }catch{}
     }
 
-    // small debounce helper for live search
     function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
   </script>
 </body>
